@@ -13,7 +13,7 @@ export function clearAuthToken() {
   localStorage.removeItem('legalflow_token');
 }
 
-async function fetchAPI(endpoint: str, options: RequestInit = {}) {
+async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   const token = getAuthToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -74,6 +74,11 @@ export const api = {
   // Payments
   getPayments: (leaseId?: string) =>
     fetchAPI(`/payment${leaseId ? `?lease_id=${leaseId}` : ''}`),
+  createPayment: (data: any) =>
+    fetchAPI('/payment', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   generatePaymentLink: (paymentId: string) =>
     fetchAPI('/payment/link', {
       method: 'POST',
@@ -95,7 +100,7 @@ export const api = {
   getDocuments: (caseId?: string) =>
     fetchAPI(`/documents${caseId ? `?case_id=${caseId}` : ''}`),
   getDocument: (id: string) => fetchAPI(`/documents/${id}`),
-  approveDocument: (id: string, approvalData: { approved: bool; rejection_reason?: string }) =>
+  approveDocument: (id: string, approvalData: { approved: boolean; rejection_reason?: string }) =>
     fetchAPI(`/documents/${id}/approve`, {
       method: 'POST',
       body: JSON.stringify(approvalData),
