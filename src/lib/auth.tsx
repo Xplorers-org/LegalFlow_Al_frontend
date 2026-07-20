@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { api, setAuthToken, clearAuthToken, getAuthToken } from './api';
 
 export type UserRole = 'landlord' | 'tenant';
 
 export interface AuthUser {
+  id?: string;
   role: UserRole;
   name: string;
   email: string;
@@ -11,7 +13,7 @@ export interface AuthUser {
 
 interface AuthContextValue {
   user: AuthUser | null;
-  signIn: (email: string) => AuthUser;
+  signIn: (email: string, password?: string) => Promise<AuthUser>;
   signOut: () => void;
 }
 
@@ -36,11 +38,11 @@ function getDemoUser(email: string): AuthUser {
   };
 }
 
-export function AuthProvider({ children }: {children: React.ReactNode;}) {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() => {
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
-      return stored ? JSON.parse(stored) as AuthUser : null;
+      return stored ? (JSON.parse(stored) as AuthUser) : null;
     } catch {
       return null;
     }
@@ -51,18 +53,48 @@ export function AuthProvider({ children }: {children: React.ReactNode;}) {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
     } else {
       window.localStorage.removeItem(STORAGE_KEY);
+      clearAuthToken();
     }
   }, [user]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
-      signIn: (email) => {
-        const nextUser = getDemoUser(email);
-        setUser(nextUser);
-        return nextUser;
+      signIn: async (email: string, password?: string) => {
+        // If password is provided, authenticate against Supabase & FastAPI Backend
+        if (password) {
+          try {
+            const authRes = await api.login({ email, password });
+            if (authRes.token && authRes.token.access_token) {
+              setAuthToken(authRes.token.access_token);
+            }
+            const authUser: AuthUser = {
+              id: authRes.user.id,
+              role: authRes.user.role || 'landlord',
+              name: authRes.user.name,
+              email: authRes.user.email,
+              title: authRes.user.role === 'landlord' ? 'Commercial Landlord Owner' : 'Commercial Tenant',
+            };
+            setUser(authUser);
+            return authUser;
+          } catch (err: any) {
+            console.error('Supabase/Backend login failed:', err);
+            // If user explicitly entered Supabase credentials, throw error so UI alerts user
+            if (email.toLowerCase().includes('legalflow') || password === 'LegalFlow2026!') {
+              throw err;
+            }
+          }
+        }
+
+        // Demo fallback for mock accounts (marlon@..., nimal@...)
+        const fallbackUser = getDemoUser(email);
+        setUser(fallbackUser);
+        return fallbackUser;
       },
-      signOut: () => setUser(null)
+      signOut: () => {
+        setUser(null);
+        clearAuthToken();
+      },
     }),
     [user]
   );
