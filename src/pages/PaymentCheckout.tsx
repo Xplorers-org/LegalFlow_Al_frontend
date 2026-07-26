@@ -5,7 +5,7 @@ import { CheckCircle2Icon, ShieldCheckIcon, CreditCardIcon, Building2Icon, UserI
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, calculateLateInterest } from '../lib/utils';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -83,7 +83,23 @@ export function PaymentCheckout() {
     gatewayRef: 'LF-PENDING-CHECKOUT',
   } : null);
 
-  const total = invoice ? (invoice.amount + invoice.serviceCharge) : 0;
+  const interestVal = (() => {
+    if (!targetPayment || !lease) return 0;
+    const interestRate = parseFloat(lease.interest_rate_pa || '12');
+    const gracePeriod = parseInt(lease.grace_period_days || '5', 10);
+    const payDay = lease.payment_day;
+    
+    const { interest } = calculateLateInterest(
+      parseFloat(targetPayment.amount_due),
+      targetPayment.due_date,
+      interestRate,
+      gracePeriod,
+      payDay
+    );
+    return interest;
+  })();
+
+  const total = invoice ? (invoice.amount + invoice.serviceCharge + interestVal) : 0;
 
   if (loading) {
     return (
@@ -203,6 +219,7 @@ export function PaymentCheckout() {
             <div className="space-y-3 py-2">
               <SummaryRow label="Monthly rent" value={formatCurrency(invoice.amount)} />
               <SummaryRow label="Service charge" value={formatCurrency(invoice.serviceCharge)} />
+              {interestVal > 0 && <SummaryRow label="Late payment interest" value={formatCurrency(interestVal)} />}
               <SummaryRow label="Total payable" value={formatCurrency(total)} total />
             </div>
           </CardContent>

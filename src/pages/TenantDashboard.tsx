@@ -6,7 +6,7 @@ import { StatCard } from '../components/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { PaymentBadge, LeaseBadge } from '../components/ui/Badge';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, calculateLateInterest, getAdjustedDueDate } from '../lib/utils';
 import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
 
@@ -82,23 +82,42 @@ export function TenantDashboard() {
   
   const outstandingBalance = payments
     .filter((p) => p.status === 'OVERDUE' || p.status === 'FAILED')
-    .reduce((sum, p) => sum + parseFloat(p.amount_due), 0);
+    .reduce((sum, p) => {
+      const interestRate = lease ? parseFloat(lease.interest_rate_pa || '12') : 12;
+      const gracePeriod = lease ? parseInt(lease.grace_period_days || '5', 10) : 5;
+      const payDay = lease ? lease.payment_day : 5;
+      
+      const { interest } = calculateLateInterest(
+        parseFloat(p.amount_due),
+        p.due_date,
+        interestRate,
+        gracePeriod,
+        payDay
+      );
+      return sum + parseFloat(p.amount_due) + interest;
+    }, 0);
 
   const lastPayment = payments
     .filter((p) => p.status === 'PAID')
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
 
-  const getAdjustedDueDate = (dateStr: string, paymentDay: number | string) => {
-    const date = new Date(dateStr);
-    let day = parseInt(String(paymentDay), 10);
-    if (isNaN(day) || day < 1 || day > 31) {
-      day = 5;
-    }
-    date.setDate(day);
-    return date;
-  };
+  const upcomingInvoiceInterest = (() => {
+    if (!upcomingInvoice) return 0;
+    const interestRate = lease ? parseFloat(lease.interest_rate_pa || '12') : 12;
+    const gracePeriod = lease ? parseInt(lease.grace_period_days || '5', 10) : 5;
+    const payDay = lease ? lease.payment_day : 5;
+    
+    const { interest } = calculateLateInterest(
+      parseFloat(upcomingInvoice.amount_due),
+      upcomingInvoice.due_date,
+      interestRate,
+      gracePeriod,
+      payDay
+    );
+    return interest;
+  })();
 
-  const totalDueToday = upcomingInvoice ? parseFloat(upcomingInvoice.amount_due) : nextPaymentAmount;
+  const totalDueToday = upcomingInvoice ? parseFloat(upcomingInvoice.amount_due) + upcomingInvoiceInterest : nextPaymentAmount;
   const displayDueDate = upcomingInvoice 
     ? getAdjustedDueDate(upcomingInvoice.due_date, lease?.payment_day || 5) 
     : nextPaymentDueDate;
@@ -195,6 +214,11 @@ export function TenantDashboard() {
                 <div>
                   <p className="text-xs text-muted">Total due</p>
                   <p className="mt-1 font-mono text-lg font-semibold text-foreground">{formatCurrency(totalDueToday)}</p>
+                  {upcomingInvoiceInterest > 0 && (
+                    <span className="text-[10px] text-danger font-medium block mt-0.5">
+                      Includes {formatCurrency(upcomingInvoiceInterest)} late interest
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="mt-5 flex flex-wrap gap-2">

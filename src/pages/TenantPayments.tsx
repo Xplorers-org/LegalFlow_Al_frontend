@@ -7,7 +7,7 @@ import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Table, THead, TH, TBody, TR, TD } from '../components/ui/Table';
 import { PaymentBadge } from '../components/ui/Badge';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, calculateLateInterest, getAdjustedDueDate } from '../lib/utils';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -71,27 +71,30 @@ export function TenantPayments() {
 
   const nextPaymentDueDate = lease ? getNextDueDate(lease.payment_day) : null;
 
-  const getAdjustedDueDate = (dateStr: string, paymentDay: number | string) => {
-    const date = new Date(dateStr);
-    let day = parseInt(String(paymentDay), 10);
-    if (isNaN(day) || day < 1 || day > 31) {
-      day = 5;
-    }
-    date.setDate(day);
-    return date;
-  };
-
   // Build the list of displayable invoices
   const displayInvoices = payments.length > 0 ? payments.map((p, idx) => {
     const totalAmount = parseFloat(p.amount_due);
     const serviceChargeVal = lease ? parseFloat(lease.service_charge || '0') : 0;
     const baseAmount = Math.max(0, totalAmount - serviceChargeVal);
     
+    const interestRate = lease ? parseFloat(lease.interest_rate_pa || '12') : 12;
+    const gracePeriod = lease ? parseInt(lease.grace_period_days || '5', 10) : 5;
+    const payDay = lease ? lease.payment_day : 5;
+    
+    const { interest } = calculateLateInterest(
+      totalAmount,
+      p.due_date,
+      interestRate,
+      gracePeriod,
+      payDay
+    );
+    
     return {
       id: p.id,
       number: p.gateway_reference ? `INV-${p.gateway_reference.slice(8, 12)}-${idx + 101}` : `INV-2026-${idx + 101}`,
       amount: baseAmount,
       serviceCharge: serviceChargeVal,
+      interest: interest,
       dueDate: getAdjustedDueDate(p.due_date, lease?.payment_day || 5).toISOString(),
       status: p.status.toLowerCase(),
       gatewayRef: p.gateway_reference || `ref_${p.id.slice(0, 8)}`,
@@ -101,6 +104,7 @@ export function TenantPayments() {
     number: `INV-2026-001`,
     amount: parseFloat(lease.monthly_rent || '0'),
     serviceCharge: parseFloat(lease.service_charge || '0'),
+    interest: 0,
     dueDate: nextPaymentDueDate?.toISOString() || new Date().toISOString(),
     status: 'pending',
     gatewayRef: 'LF-PENDING-CHECKOUT',
@@ -109,7 +113,7 @@ export function TenantPayments() {
   // Compute stats
   const outstandingBalance = displayInvoices
     .filter(inv => inv.status === 'pending' || inv.status === 'overdue')
-    .reduce((sum, inv) => sum + inv.amount + inv.serviceCharge, 0);
+    .reduce((sum, inv) => sum + inv.amount + inv.serviceCharge + (inv.interest || 0), 0);
 
   const nextDueInvoice = displayInvoices.find(inv => inv.status === 'pending' || inv.status === 'overdue');
   const pendingCount = displayInvoices.filter(inv => inv.status === 'pending' || inv.status === 'overdue').length;
@@ -154,12 +158,12 @@ export function TenantPayments() {
           value={String(pendingCount)}
           icon={FileStackIcon}
           tone="warning"
-          hint={nextDueInvoice ? formatCurrency(nextDueInvoice.amount + nextDueInvoice.serviceCharge) : formatCurrency(0)}
+          hint={nextDueInvoice ? formatCurrency(nextDueInvoice.amount + nextDueInvoice.serviceCharge + (nextDueInvoice.interest || 0)) : formatCurrency(0)}
           index={2}
         />
         <StatCard
           label="Last Successful Payment"
-          value={lastPaidInvoice ? formatCurrency(lastPaidInvoice.amount + lastPaidInvoice.serviceCharge) : 'None'}
+          value={lastPaidInvoice ? formatCurrency(lastPaidInvoice.amount + lastPaidInvoice.serviceCharge + (lastPaidInvoice.interest || 0)) : 'None'}
           icon={CheckCircle2Icon}
           tone="success"
           hint={lastPaidInvoice ? new Date(lastPaidInvoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'No transaction history'}
@@ -186,7 +190,14 @@ export function TenantPayments() {
                 {displayInvoices.map((invoice) => (
                   <TR key={invoice.id}>
                     <TD className="pl-5 font-mono font-medium">{invoice.number}</TD>
-                    <TD className="font-mono font-medium">{formatCurrency(invoice.amount + invoice.serviceCharge)}</TD>
+                    <TD className="font-mono font-medium">
+                      {formatCurrency(invoice.amount + invoice.serviceCharge + (invoice.interest || 0))}
+                      {invoice.interest > 0 && (
+                        <span className="text-[10px] text-danger font-medium block mt-0.5">
+                          + {formatCurrency(invoice.interest)} Late Interest
+                        </span>
+                      )}
+                    </TD>
                     <TD className="text-muted">
                       {new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </TD>

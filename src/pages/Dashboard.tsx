@@ -27,7 +27,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button';
 import { Table, THead, TH, TBody, TR, TD } from '../components/ui/Table';
 import { CaseBadge } from '../components/ui/Badge';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, calculateLateInterest, getAdjustedDueDate } from '../lib/utils';
 
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
@@ -85,19 +85,53 @@ export function Dashboard() {
   
   const totalPaymentsDue = payments
     .filter(p => p.status === 'PENDING' || p.status === 'OVERDUE' || p.status === 'pending' || p.status === 'overdue')
-    .reduce((sum, p) => sum + parseFloat(p.amount_due || '0'), 0);
+    .reduce((sum, p) => {
+      const lease = leases.find(l => l.id === p.lease_id);
+      const interestRate = lease ? parseFloat(lease.interest_rate_pa || '12') : 12;
+      const gracePeriod = lease ? parseInt(lease.grace_period_days || '5', 10) : 5;
+      const payDay = lease ? lease.payment_day : 5;
+      
+      const { interest } = calculateLateInterest(
+        parseFloat(p.amount_due || '0'),
+        p.due_date,
+        interestRate,
+        gracePeriod,
+        payDay
+      );
+      
+      return sum + parseFloat(p.amount_due || '0') + interest;
+    }, 0);
 
   const activeCasesCount = cases.filter(c => c.status !== 'CLOSED' && c.status !== 'RESOLVED' && c.status !== 'closed' && c.status !== 'resolved').length;
 
   const recentCasesList = cases.slice(0, 5).map((c) => {
     const lease = leases.find((l) => l.id === c.lease_id);
     const tenant = lease ? tenants.find((t) => t.id === lease.tenant_id) : null;
+    
+    // Sum overdue payments for this lease with interest
+    const leasePayments = payments.filter(p => p.lease_id === c.lease_id && (p.status === 'OVERDUE' || p.status === 'overdue'));
+    const totalOutstanding = leasePayments.reduce((sum, p) => {
+      const interestRate = lease ? parseFloat(lease.interest_rate_pa || '12') : 12;
+      const gracePeriod = lease ? parseInt(lease.grace_period_days || '5', 10) : 5;
+      const payDay = lease ? lease.payment_day : 5;
+      
+      const { interest } = calculateLateInterest(
+        parseFloat(p.amount_due || '0'),
+        p.due_date,
+        interestRate,
+        gracePeriod,
+        payDay
+      );
+      
+      return sum + parseFloat(p.amount_due || '0') + interest;
+    }, 0);
+
     return {
       id: c.id,
       tenant: tenant ? tenant.name : 'Unknown Tenant',
       business: tenant ? tenant.company || 'Private Tenant' : 'Unknown Business',
       property: lease ? lease.property_name : 'Unknown Property',
-      outstanding: parseFloat(c.outstanding_amount || '0'),
+      outstanding: totalOutstanding || parseFloat(c.outstanding_amount || '0'),
       status: c.status,
       recommendedAction: c.recommended_action || 'No action needed',
     };
@@ -111,7 +145,19 @@ export function Dashboard() {
       const lease = leases.find((l) => l.id === p.lease_id);
       const tenant = lease ? tenants.find((t) => t.id === lease.tenant_id) : null;
       
-      const dueDate = new Date(p.due_date);
+      const interestRate = lease ? parseFloat(lease.interest_rate_pa || '12') : 12;
+      const gracePeriod = lease ? parseInt(lease.grace_period_days || '5', 10) : 5;
+      const payDay = lease ? lease.payment_day : 5;
+      
+      const { interest } = calculateLateInterest(
+        parseFloat(p.amount_due || '0'),
+        p.due_date,
+        interestRate,
+        gracePeriod,
+        payDay
+      );
+      
+      const dueDate = getAdjustedDueDate(p.due_date, payDay || 5);
       const today = new Date();
       const diffTime = dueDate.getTime() - today.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -121,7 +167,7 @@ export function Dashboard() {
         tenant: tenant ? tenant.name : 'Unknown Tenant',
         date: dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
         due: dueText,
-        amount: parseFloat(p.amount_due || '0'),
+        amount: parseFloat(p.amount_due || '0') + interest,
       };
     });
 
@@ -143,10 +189,22 @@ export function Dashboard() {
           rawTime: new Date(p.updated_at).getTime(),
         });
       } else if (p.status === 'OVERDUE' || p.status === 'overdue') {
+        const interestRate = lease ? parseFloat(lease.interest_rate_pa || '12') : 12;
+        const gracePeriod = lease ? parseInt(lease.grace_period_days || '5', 10) : 5;
+        const payDay = lease ? lease.payment_day : 5;
+        
+        const { interest } = calculateLateInterest(
+          parseFloat(p.amount_due || '0'),
+          p.due_date,
+          interestRate,
+          gracePeriod,
+          payDay
+        );
+
         list.push({
           icon: 'overdue',
           text: `Payment overdue for ${tenantName} - ${propName}`,
-          meta: `Overdue Amount: ${formatCurrency(parseFloat(p.amount_due))}`,
+          meta: `Overdue Base: ${formatCurrency(parseFloat(p.amount_due))} + Interest: ${formatCurrency(interest)}`,
           time: new Date(p.updated_at).toLocaleDateString(),
           rawTime: new Date(p.updated_at).getTime(),
         });
