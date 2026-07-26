@@ -70,6 +70,29 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  parseLeasePDF: async (file: File) => {
+    const token = getAuthToken();
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/lease/parse`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ detail: 'PDF Parsing Failed' }));
+      throw new Error(errorData.detail || `HTTP Error ${response.status}`);
+    }
+
+    return response.json();
+  },
 
   // Payments
   getPayments: (leaseId?: string) =>

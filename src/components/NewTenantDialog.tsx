@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { UploadCloudIcon, FileTextIcon, CheckCircle2Icon, CopyIcon, KeyIcon } from 'lucide-react';
+import { UploadCloudIcon, FileTextIcon, CheckCircle2Icon, CopyIcon, KeyIcon, Loader2Icon } from 'lucide-react';
 import { Dialog } from './ui/Dialog';
 import { Button } from './ui/Button';
 import { Input, Field } from './ui/Input';
@@ -16,7 +16,9 @@ export function NewTenantDialog({
   onSuccess?: () => void;
 }) {
   const [loading, setLoading] = useState(false);
-  const [file, setFile] = useState<string | null>(null);
+  const [parsing, setParsing] = useState(false);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [parsedMetadata, setParsedMetadata] = useState<any | null>(null);
   const [createdCredentials, setCreatedCredentials] = useState<{ email: string; pass: string } | null>(null);
 
   // Form State
@@ -31,6 +33,55 @@ export function NewTenantDialog({
   const [leaseStart, setLeaseStart] = useState('2026-08-01');
   const [leaseEnd, setLeaseEnd] = useState('2027-07-31');
   const [interestRate, setInterestRate] = useState('12.0');
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFileName(file.name);
+    setParsing(true);
+    const toastId = toast.loading('AI is reading and parsing lease agreement PDF...');
+
+    try {
+      const result = await api.parseLeasePDF(file);
+      setParsedMetadata(result);
+      
+      // Auto-populate form values with extracted details
+      if (result.lessee?.name) setName(result.lessee.name);
+      if (result.lessee?.company) setCompany(result.lessee.company);
+      if (result.lessee?.email) setEmail(result.lessee.email);
+      if (result.lessee?.phone) setPhone(result.lessee.phone);
+      
+      if (result.first_schedule?.physical_address) {
+        setAddress(result.first_schedule.physical_address);
+      } else if (result.lessee?.address) {
+        setAddress(result.lessee.address);
+      }
+
+      if (result.lease_terms) {
+        const terms = result.lease_terms;
+        if (terms.monthly_rent) setMonthlyRent(String(terms.monthly_rent));
+        if (terms.service_charge) setServiceCharge(String(terms.service_charge));
+        if (terms.payment_day) setPaymentDay(String(terms.payment_day));
+        if (terms.commencement_date) setLeaseStart(terms.commencement_date);
+        if (terms.expiry_date) setLeaseEnd(terms.expiry_date);
+        if (terms.interest_rate_pa) setInterestRate(String(terms.interest_rate_pa));
+      }
+
+      toast.success('Lease terms extracted successfully!', {
+        id: toastId,
+        description: 'Onboarding form fields have been automatically filled. Please review details before creating.',
+      });
+    } catch (err: any) {
+      console.error('Failed to parse PDF:', err);
+      toast.error('AI lease parsing failed', {
+        id: toastId,
+        description: err.message || 'You can still fill in all lease terms manually.',
+      });
+    } finally {
+      setParsing(false);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +109,7 @@ export function NewTenantDialog({
         lease_start: leaseStart,
         lease_end: leaseEnd,
         interest_rate_pa: parseFloat(interestRate) || 12.0,
+        extracted_metadata: parsedMetadata, // Send extracted PDF schedules & utilities
       });
 
       // 3. Create initial payment schedule item
@@ -102,7 +154,8 @@ export function NewTenantDialog({
     setEmail('');
     setPhone('');
     setAddress('');
-    setFile(null);
+    setFileName(null);
+    setParsedMetadata(null);
     setCreatedCredentials(null);
     onClose();
   };
@@ -132,10 +185,10 @@ export function NewTenantDialog({
           <Button onClick={handleClose}>Done</Button>
         ) : (
           <>
-            <Button variant="outline" onClick={handleClose} disabled={loading}>
+            <Button variant="outline" onClick={handleClose} disabled={loading || parsing}>
               Cancel
             </Button>
-            <Button type="submit" form="new-tenant-form" disabled={loading}>
+            <Button type="submit" form="new-tenant-form" disabled={loading || parsing}>
               {loading ? 'Creating...' : 'Create tenant'}
             </Button>
           </>
@@ -171,6 +224,47 @@ export function NewTenantDialog({
         </div>
       ) : (
         <form id="new-tenant-form" onSubmit={submit} className="space-y-5">
+          <div>
+            <p className="mb-1.5 block text-xs font-medium text-foreground">Upload Lease Agreement PDF</p>
+            <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border bg-background/50 px-4 py-4 transition-colors hover:border-primary/40 hover:bg-primary-soft">
+              {parsing ? (
+                <>
+                  <Loader2Icon className="h-5 w-5 shrink-0 animate-spin text-primary" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-primary">AI is parsing lease agreement...</p>
+                    <p className="text-xs text-muted">Extracting schedules & utility accounts</p>
+                  </div>
+                </>
+              ) : fileName ? (
+                <>
+                  <CheckCircle2Icon className="h-5 w-5 shrink-0 text-success" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{fileName}</p>
+                    <p className="text-xs text-success">Extracted and filled! Feel free to upload another or edit fields.</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface text-primary shadow-card">
+                    <UploadCloudIcon className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Click to upload lease PDF</p>
+                    <p className="text-xs text-muted">PDF up to 25MB · parsed automatically by Google Gemini AI</p>
+                  </div>
+                </>
+              )}
+              <input
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                disabled={parsing}
+                onChange={handleFileChange}
+              />
+              <FileTextIcon className="ml-auto hidden h-4 w-4 text-muted sm:block" />
+            </label>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Tenant Name">
               <Input
@@ -270,38 +364,6 @@ export function NewTenantDialog({
                 onChange={(e) => setInterestRate(e.target.value)}
               />
             </Field>
-          </div>
-
-          <div>
-            <p className="mb-1.5 block text-xs font-medium text-foreground">Upload Lease Agreement PDF</p>
-            <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border bg-background/50 px-4 py-4 transition-colors hover:border-primary/40 hover:bg-primary-soft">
-              {file ? (
-                <>
-                  <CheckCircle2Icon className="h-5 w-5 shrink-0 text-success" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-foreground">{file}</p>
-                    <p className="text-xs text-muted">Ready for AI legal agents</p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface text-primary shadow-card">
-                    <UploadCloudIcon className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">Click to upload lease PDF</p>
-                    <p className="text-xs text-muted">PDF up to 25MB · analyzed by LangGraph RAG agents</p>
-                  </div>
-                </>
-              )}
-              <input
-                type="file"
-                accept="application/pdf"
-                className="hidden"
-                onChange={(e) => setFile(e.target.files?.[0]?.name ?? 'commercial-lease-agreement.pdf')}
-              />
-              <FileTextIcon className="ml-auto hidden h-4 w-4 text-muted sm:block" />
-            </label>
           </div>
         </form>
       )}
