@@ -450,6 +450,24 @@ export function CaseDetails() {
                         {formatCurrency(parseFloat(lease.service_charge))}
                       </p>
                     </div>
+                    <div className="rounded-lg border border-border p-3">
+                      <p className="text-xs text-muted font-semibold">Due Date</p>
+                      <p className="mt-1 text-sm font-medium text-foreground">
+                        {lease.payment_day ? `${lease.payment_day}th day of each calendar month` : "N/A"}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border p-3">
+                      <p className="text-xs text-muted font-semibold">Grace Period</p>
+                      <p className="mt-1 text-sm font-medium text-foreground">
+                        {lease.grace_period_days ? `${lease.grace_period_days} calendar days from the Due Date` : "N/A"}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border p-3 col-span-2">
+                      <p className="text-xs text-muted font-semibold">Late Payment Interest</p>
+                      <p className="mt-1 text-sm font-medium text-foreground">
+                        {lease.interest_rate_pa ? `${lease.interest_rate_pa}% per annum, compounding monthly on the Outstanding Balance` : "N/A"}
+                      </p>
+                    </div>
                   </div>
                   <div className="rounded-lg border border-border bg-background/50 p-3">
                     <p className="text-xs text-muted font-semibold uppercase">Annual Rent Escalation Terms</p>
@@ -457,7 +475,7 @@ export function CaseDetails() {
                   </div>
                 </CardContent>
               </Card>
-
+ 
               {/* Third Schedule - Utilities */}
               <Card className="border-primary-soft">
                 <CardHeader className="border-b border-border bg-primary-soft/10 py-3.5">
@@ -478,7 +496,7 @@ export function CaseDetails() {
                       Acct: {meta.third_schedule_utilities?.electricity_account_no || "N/A"}
                     </p>
                   </div>
-
+ 
                   <div className="rounded-lg border border-border p-3.5">
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-bold text-foreground">Water Provider</span>
@@ -489,6 +507,20 @@ export function CaseDetails() {
                     </p>
                     <p className="text-xs text-muted mt-1 font-mono">
                       Acct: {meta.third_schedule_utilities?.water_account_no || "N/A"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-border p-3.5 bg-background/50">
+                    <p className="text-xs text-muted font-semibold uppercase">Liability for Consumption</p>
+                    <p className="mt-1.5 text-xs font-medium text-foreground">
+                      {meta.third_schedule_utilities?.liability_for_consumption || "Lessee, exclusively, from the Commencement Date"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-border p-3.5 bg-background/50">
+                    <p className="text-xs text-muted font-semibold uppercase">Recovery of Arrears on Termination</p>
+                    <p className="mt-1.5 text-xs font-medium text-foreground">
+                      {meta.third_schedule_utilities?.recovery_of_arrears_on_termination || "Firstly from the Security Deposit (Clause 8); balance recoverable by civil action (Clause 6.5)"}
                     </p>
                   </div>
                 </CardContent>
