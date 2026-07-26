@@ -6,6 +6,7 @@ import { StatCard } from '../components/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { PaymentBadge, LeaseBadge } from '../components/ui/Badge';
+import { Table, THead, TH, TBody, TR, TD } from '../components/ui/Table';
 import { formatCurrency, calculateLateInterest, getAdjustedDueDate } from '../lib/utils';
 import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
@@ -17,6 +18,7 @@ export function TenantDashboard() {
   const [loading, setLoading] = useState(true);
   const [lease, setLease] = useState<any>(null);
   const [payments, setPayments] = useState<any[]>([]);
+  const [utilityBills, setUtilityBills] = useState<any[]>([]);
 
   const displayName = user ? user.name : 'Valued Tenant';
 
@@ -42,8 +44,12 @@ export function TenantDashboard() {
       if (currentLease) {
         setLease(currentLease);
 
-        const paymentsRes = await api.getPayments(currentLease.id).catch(() => []);
+        const [paymentsRes, utilityRes] = await Promise.all([
+          api.getPayments(currentLease.id).catch(() => []),
+          api.getUtilityBills(currentLease.id).catch(() => []),
+        ]);
         setPayments(paymentsRes);
+        setUtilityBills(utilityRes);
       }
     } catch (err) {
       console.error('Error loading tenant dashboard:', err);
@@ -490,6 +496,54 @@ export function TenantDashboard() {
                     {lease.extracted_metadata.third_schedule_utilities?.recovery_of_arrears_on_termination || "Firstly from the Security Deposit (Clause 8); balance recoverable by civil action (Clause 6.5)"}
                   </p>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Utility Statements Table */}
+            <Card className="lg:col-span-2 border-primary-soft">
+              <CardHeader className="border-b border-border bg-primary-soft/10 py-3.5">
+                <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                  <ReceiptTextIcon className="h-4 w-4" /> Third Schedule: Utility Statements & Payments
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-5 px-0 pb-0">
+                {utilityBills.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-muted">
+                    No utility bill statements parsed yet. Bills will appear here automatically when received by the landlord.
+                  </div>
+                ) : (
+                  <Table>
+                    <THead>
+                      <TH className="pl-4">Provider</TH>
+                      <TH>Account No</TH>
+                      <TH>Amount</TH>
+                      <TH>Due Date</TH>
+                      <TH className="pr-4 text-right">Status</TH>
+                    </THead>
+                    <TBody>
+                      {utilityBills.map((bill) => (
+                        <TR key={bill.id}>
+                          <TD className="pl-4 font-semibold">
+                            {bill.utility_type === 'ELECTRICITY' ? 'Electricity' : 'Water'}
+                          </TD>
+                          <TD className="font-mono text-xs text-muted">{bill.account_number}</TD>
+                          <TD className="font-mono font-medium text-foreground">{formatCurrency(bill.amount)}</TD>
+                          <TD className="text-muted">
+                            {new Date(bill.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </TD>
+                          <TD className="pr-4 text-right">
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                              bill.status === 'PAID' ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'
+                            }`}>
+                              <span className={`h-1 w-1 rounded-full ${bill.status === 'PAID' ? 'bg-success' : 'bg-warning'}`} />
+                              {bill.status === 'PAID' ? 'Paid' : 'Pending'}
+                            </span>
+                          </TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </div>

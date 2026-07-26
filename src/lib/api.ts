@@ -102,6 +102,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  getUtilityBills: (leaseId?: string) =>
+    fetchAPI(`/utility-bills${leaseId ? `?lease_id=${leaseId}` : ''}`),
   generatePaymentLink: (paymentId: string) =>
     fetchAPI('/payment/link', {
       method: 'POST',
