@@ -28,7 +28,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button';
 import { PaymentBadge, CaseBadge, LeaseBadge } from '../components/ui/Badge';
 import { Table, THead, TH, TBody, TR, TD } from '../components/ui/Table';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, calculateLateInterest } from '../lib/utils';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
 
@@ -133,10 +133,23 @@ export function CaseDetails() {
 
   // Derived stats
   const totalArrears = payments
-    .filter((p) => p.status === 'OVERDUE' || p.status === 'FAILED')
-    .reduce((sum, p) => sum + parseFloat(p.amount_due), 0);
+    .filter((p) => p.status === 'PENDING' || p.status === 'OVERDUE' || p.status === 'FAILED' || p.status === 'pending' || p.status === 'overdue' || p.status === 'failed')
+    .reduce((sum, p) => {
+      const interestRate = lease ? parseFloat(lease.interest_rate_pa || '12') : 12;
+      const gracePeriod = lease ? parseInt(lease.grace_period_days || '5', 10) : 5;
+      const payDay = lease ? lease.payment_day : 5;
+      
+      const { interest } = calculateLateInterest(
+        parseFloat(p.amount_due),
+        p.due_date,
+        interestRate,
+        gracePeriod,
+        payDay
+      );
+      return sum + parseFloat(p.amount_due) + interest;
+    }, 0);
 
-  const monthsInDefault = payments.filter((p) => p.status === 'OVERDUE' || p.status === 'FAILED').length;
+  const monthsInDefault = payments.filter((p) => p.status === 'OVERDUE' || p.status === 'FAILED' || p.status === 'overdue' || p.status === 'failed').length;
 
   const meta = lease?.extracted_metadata;
 

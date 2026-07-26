@@ -81,7 +81,7 @@ export function TenantDashboard() {
   const upcomingInvoice = payments.find((p) => p.status === 'PENDING' || p.status === 'OVERDUE');
   
   const outstandingBalance = payments
-    .filter((p) => p.status === 'OVERDUE' || p.status === 'FAILED')
+    .filter((p) => p.status === 'PENDING' || p.status === 'OVERDUE' || p.status === 'FAILED' || p.status === 'pending' || p.status === 'overdue' || p.status === 'failed')
     .reduce((sum, p) => {
       const interestRate = lease ? parseFloat(lease.interest_rate_pa || '12') : 12;
       const gracePeriod = lease ? parseInt(lease.grace_period_days || '5', 10) : 5;
