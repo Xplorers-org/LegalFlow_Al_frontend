@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarClockIcon, AlertCircleIcon, FileStackIcon, CheckCircle2Icon, CreditCardIcon, EyeIcon, DownloadIcon } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -8,8 +7,227 @@ import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Table, THead, TH, TBody, TR, TD } from '../components/ui/Table';
 import { PaymentBadge } from '../components/ui/Badge';
-import { tenantInvoices } from '../lib/tenantData';
 import { formatCurrency } from '../lib/utils';
 import { toast } from 'sonner';
+import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
 
-export function TenantPayments() {const navigate = useNavigate();const current = tenantInvoices[0];return <div><PageHeader title="Payments" description="Review invoices and make secure online payments." /><div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"><StatCard label="Outstanding Balance" value={formatCurrency(414000)} icon={AlertCircleIcon} tone="danger" hint="2 invoices" index={0} /><StatCard label="Next Due Date" value="05 Jul" icon={CalendarClockIcon} tone="info" hint="In 4 days" index={1} /><StatCard label="Pending Invoices" value="1" icon={FileStackIcon} tone="warning" hint={formatCurrency(current.amount + current.serviceCharge)} index={2} /><StatCard label="Last Successful Payment" value={formatCurrency(207000)} icon={CheckCircle2Icon} tone="success" hint="05 May 2026" index={3} /></div><Card className="mt-6"><div className="flex items-center justify-between border-b border-border p-4"><p className="text-sm font-medium text-foreground">Your invoices</p><span className="text-xs text-muted">{tenantInvoices.length} invoices</span></div><CardContent className="px-0 pb-0"><Table><THead><TH className="pl-5">Invoice</TH><TH>Amount</TH><TH>Due Date</TH><TH>Status</TH><TH className="pr-5 text-right">Actions</TH></THead><TBody>{tenantInvoices.map((invoice) => <TR key={invoice.id}><TD className="pl-5 font-mono font-medium">{invoice.number}</TD><TD className="font-mono font-medium">{formatCurrency(invoice.amount + invoice.serviceCharge)}</TD><TD className="text-muted">{new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</TD><TD><PaymentBadge status={invoice.status} /></TD><TD className="pr-5 text-right"><div className="flex justify-end gap-1">{invoice.status !== 'paid' && <Button size="sm" onClick={() => navigate(`/tenant/pay/${invoice.id}`)}><CreditCardIcon className="h-3.5 w-3.5" /> Pay Now</Button>}<Button variant="outline" size="sm" onClick={() => navigate(`/tenant/pay/${invoice.id}`)}><EyeIcon className="h-3.5 w-3.5" /> View</Button>{invoice.status === 'paid' && <Button variant="ghost" size="icon" aria-label="Download receipt" onClick={() => toast.success('Receipt downloaded')}><DownloadIcon className="h-4 w-4" /></Button>}</div></TD></TR>)}</TBody></Table></CardContent></Card></div>;}
+export function TenantPayments() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [lease, setLease] = useState<any | null>(null);
+  const [payments, setPayments] = useState<any[]>([]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [tenantsRes, leasesRes] = await Promise.all([
+        api.getTenants().catch(() => []),
+        api.getLeases().catch(() => []),
+      ]);
+
+      const myTenants = tenantsRes.filter((t: any) => t.email.toLowerCase() === user?.email?.toLowerCase());
+      const myTenantIds = myTenants.map((t: any) => t.id);
+      const myLeases = leasesRes.filter((l: any) => myTenantIds.includes(l.tenant_id));
+
+      myLeases.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      const currentLease = myLeases[0];
+      if (currentLease) {
+        setLease(currentLease);
+
+        const paymentsRes = await api.getPayments(currentLease.id).catch(() => []);
+        setPayments(paymentsRes);
+      }
+    } catch (err) {
+      console.error('Error loading tenant payments:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.email) {
+      loadData();
+    }
+  }, [user]);
+
+  // Next due date calculations
+  const getNextDueDate = (paymentDayStr: string | number) => {
+    let day = parseInt(String(paymentDayStr), 10);
+    if (isNaN(day) || day < 1 || day > 31) day = 5;
+    
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+    
+    let dueDate = new Date(currentYear, currentMonth, day);
+    if (dueDate < today) {
+      dueDate = new Date(currentYear, currentMonth + 1, day);
+    }
+    return dueDate;
+  };
+
+  const nextPaymentDueDate = lease ? getNextDueDate(lease.payment_day) : null;
+
+  const getAdjustedDueDate = (dateStr: string, paymentDay: number | string) => {
+    const date = new Date(dateStr);
+    let day = parseInt(String(paymentDay), 10);
+    if (isNaN(day) || day < 1 || day > 31) {
+      day = 5;
+    }
+    date.setDate(day);
+    return date;
+  };
+
+  // Build the list of displayable invoices
+  const displayInvoices = payments.length > 0 ? payments.map((p, idx) => {
+    const totalAmount = parseFloat(p.amount_due);
+    const serviceChargeVal = lease ? parseFloat(lease.service_charge || '0') : 0;
+    const baseAmount = Math.max(0, totalAmount - serviceChargeVal);
+    
+    return {
+      id: p.id,
+      number: p.gateway_reference ? `INV-${p.gateway_reference.slice(8, 12)}-${idx + 101}` : `INV-2026-${idx + 101}`,
+      amount: baseAmount,
+      serviceCharge: serviceChargeVal,
+      dueDate: getAdjustedDueDate(p.due_date, lease?.payment_day || 5).toISOString(),
+      status: p.status.toLowerCase(),
+      gatewayRef: p.gateway_reference || `ref_${p.id.slice(0, 8)}`,
+    };
+  }) : (lease ? [{
+    id: 'virtual-payment',
+    number: `INV-2026-001`,
+    amount: parseFloat(lease.monthly_rent || '0'),
+    serviceCharge: parseFloat(lease.service_charge || '0'),
+    dueDate: nextPaymentDueDate?.toISOString() || new Date().toISOString(),
+    status: 'pending',
+    gatewayRef: 'LF-PENDING-CHECKOUT',
+  }] : []);
+
+  // Compute stats
+  const outstandingBalance = displayInvoices
+    .filter(inv => inv.status === 'pending' || inv.status === 'overdue')
+    .reduce((sum, inv) => sum + inv.amount + inv.serviceCharge, 0);
+
+  const nextDueInvoice = displayInvoices.find(inv => inv.status === 'pending' || inv.status === 'overdue');
+  const pendingCount = displayInvoices.filter(inv => inv.status === 'pending' || inv.status === 'overdue').length;
+
+  const lastPaidInvoice = displayInvoices
+    .filter(inv => inv.status === 'paid' || inv.status === 'success' || inv.status === 'completed')
+    .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime())[0];
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="text-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto"></div>
+          <p className="mt-4 text-sm text-muted">Loading payment invoices...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <PageHeader title="Payments" description="Review invoices and make secure online payments." />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Outstanding Balance"
+          value={formatCurrency(outstandingBalance)}
+          icon={AlertCircleIcon}
+          tone={outstandingBalance > 0 ? 'danger' : 'success'}
+          hint={`${pendingCount} pending invoice(s)`}
+          index={0}
+        />
+        <StatCard
+          label="Next Due Date"
+          value={nextDueInvoice ? new Date(nextDueInvoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'None'}
+          icon={CalendarClockIcon}
+          tone="info"
+          hint={nextDueInvoice ? `Invoice: ${nextDueInvoice.number}` : 'No payments due'}
+          index={1}
+        />
+        <StatCard
+          label="Pending Invoices"
+          value={String(pendingCount)}
+          icon={FileStackIcon}
+          tone="warning"
+          hint={nextDueInvoice ? formatCurrency(nextDueInvoice.amount + nextDueInvoice.serviceCharge) : formatCurrency(0)}
+          index={2}
+        />
+        <StatCard
+          label="Last Successful Payment"
+          value={lastPaidInvoice ? formatCurrency(lastPaidInvoice.amount + lastPaidInvoice.serviceCharge) : 'None'}
+          icon={CheckCircle2Icon}
+          tone="success"
+          hint={lastPaidInvoice ? new Date(lastPaidInvoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'No transaction history'}
+          index={3}
+        />
+      </div>
+
+      <Card className="mt-6">
+        <div className="flex items-center justify-between border-b border-border p-4">
+          <p className="text-sm font-medium text-foreground">Your invoices</p>
+          <span className="text-xs text-muted">{displayInvoices.length} invoices</span>
+        </div>
+        <CardContent className="px-0 pb-0">
+          {displayInvoices.length > 0 ? (
+            <Table>
+              <THead>
+                <TH className="pl-5">Invoice</TH>
+                <TH>Amount</TH>
+                <TH>Due Date</TH>
+                <TH>Status</TH>
+                <TH className="pr-5 text-right">Actions</TH>
+              </THead>
+              <TBody>
+                {displayInvoices.map((invoice) => (
+                  <TR key={invoice.id}>
+                    <TD className="pl-5 font-mono font-medium">{invoice.number}</TD>
+                    <TD className="font-mono font-medium">{formatCurrency(invoice.amount + invoice.serviceCharge)}</TD>
+                    <TD className="text-muted">
+                      {new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </TD>
+                    <TD>
+                      <PaymentBadge status={invoice.status} />
+                    </TD>
+                    <TD className="pr-5 text-right">
+                      <div className="flex justify-end gap-1">
+                        {invoice.status !== 'paid' && invoice.status !== 'success' && invoice.status !== 'completed' && (
+                          <Button
+                            size="sm"
+                            onClick={() => navigate(invoice.id === 'virtual-payment' ? '/tenant/payments' : `/tenant/pay/${invoice.id}`)}
+                          >
+                            <CreditCardIcon className="h-3.5 w-3.5" /> Pay Now
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(invoice.id === 'virtual-payment' ? '/tenant/payments' : `/tenant/pay/${invoice.id}`)}
+                        >
+                          <EyeIcon className="h-3.5 w-3.5" /> View
+                        </Button>
+                        {(invoice.status === 'paid' || invoice.status === 'success' || invoice.status === 'completed') && (
+                          <Button variant="ghost" size="icon" aria-label="Download receipt" onClick={() => toast.success('Receipt downloaded')}>
+                            <DownloadIcon className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          ) : (
+            <div className="py-8 text-center text-sm text-muted">
+              No invoice records found.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

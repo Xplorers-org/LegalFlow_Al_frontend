@@ -16,7 +16,6 @@ export function TenantDashboard() {
   
   const [loading, setLoading] = useState(true);
   const [lease, setLease] = useState<any>(null);
-  const [tenant, setTenant] = useState<any>(null);
   const [payments, setPayments] = useState<any[]>([]);
 
   const displayName = user ? user.name : 'Valued Tenant';
@@ -42,8 +41,6 @@ export function TenantDashboard() {
       const currentLease = myLeases[0];
       if (currentLease) {
         setLease(currentLease);
-        const currentTenant = myTenants.find((t: any) => t.id === currentLease.tenant_id);
-        setTenant(currentTenant);
 
         const paymentsRes = await api.getPayments(currentLease.id).catch(() => []);
         setPayments(paymentsRes);
@@ -62,6 +59,25 @@ export function TenantDashboard() {
   }, [user]);
 
   // Derived stats
+  const nextPaymentAmount = lease ? (parseFloat(lease.monthly_rent || '0') + parseFloat(lease.service_charge || '0')) : 0;
+  
+  const getNextDueDate = (paymentDayStr: string | number) => {
+    let day = parseInt(String(paymentDayStr), 10);
+    if (isNaN(day) || day < 1 || day > 31) day = 5; // Default fallback to 5th
+    
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+    
+    let dueDate = new Date(currentYear, currentMonth, day);
+    if (dueDate < today) {
+      dueDate = new Date(currentYear, currentMonth + 1, day);
+    }
+    return dueDate;
+  };
+
+  const nextPaymentDueDate = lease ? getNextDueDate(lease.payment_day) : null;
+
   const upcomingInvoice = payments.find((p) => p.status === 'PENDING' || p.status === 'OVERDUE');
   
   const outstandingBalance = payments
@@ -72,7 +88,27 @@ export function TenantDashboard() {
     .filter((p) => p.status === 'PAID')
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
 
-  const totalDueToday = upcomingInvoice ? parseFloat(upcomingInvoice.amount_due) : 0;
+  const getAdjustedDueDate = (dateStr: string, paymentDay: number | string) => {
+    const date = new Date(dateStr);
+    let day = parseInt(String(paymentDay), 10);
+    if (isNaN(day) || day < 1 || day > 31) {
+      day = 5;
+    }
+    date.setDate(day);
+    return date;
+  };
+
+  const totalDueToday = upcomingInvoice ? parseFloat(upcomingInvoice.amount_due) : nextPaymentAmount;
+  const displayDueDate = upcomingInvoice 
+    ? getAdjustedDueDate(upcomingInvoice.due_date, lease?.payment_day || 5) 
+    : nextPaymentDueDate;
+
+  const activeInvoice = upcomingInvoice || (lease ? {
+    id: 'virtual-payment',
+    status: 'PENDING',
+    amount_due: nextPaymentAmount,
+    due_date: nextPaymentDueDate?.toISOString(),
+  } : null);
 
   if (loading) {
     return (
@@ -91,8 +127,8 @@ export function TenantDashboard() {
         title={`Welcome back, ${displayName}`}
         description="Your commercial lease, invoices, and payment activity in one secure place."
         actions={
-          upcomingInvoice && (
-            <Button onClick={() => navigate(`/tenant/pay/${upcomingInvoice.id}`)}>
+          activeInvoice && (
+            <Button onClick={() => navigate(activeInvoice.id === 'virtual-payment' ? '/tenant/payments' : `/tenant/pay/${activeInvoice.id}`)}>
               <CreditCardIcon className="h-4 w-4" /> Pay now
             </Button>
           )
@@ -104,16 +140,16 @@ export function TenantDashboard() {
           label="Current Lease"
           value={lease ? lease.status.toUpperCase() : 'None'}
           icon={Building2Icon}
-          tone={lease?.status === 'ACTIVE' ? 'success' : 'muted'}
+          tone={lease?.status === 'ACTIVE' ? 'success' : undefined}
           hint={lease ? lease.property_name : 'No active property'}
           index={0}
         />
         <StatCard
           label="Next Payment Due"
-          value={upcomingInvoice ? new Date(upcomingInvoice.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'None'}
+          value={displayDueDate ? displayDueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'None'}
           icon={CalendarClockIcon}
           tone="info"
-          hint={upcomingInvoice ? formatCurrency(totalDueToday) : 'No pending payments'}
+          hint={displayDueDate ? formatCurrency(totalDueToday) : 'No pending payments'}
           index={1}
         />
         <StatCard
@@ -135,14 +171,14 @@ export function TenantDashboard() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
-        {upcomingInvoice ? (
+        {activeInvoice ? (
           <Card className="xl:col-span-2 overflow-hidden border-primary/25">
             <div className="flex items-center justify-between bg-primary px-5 py-4 text-primary-foreground">
               <div>
                 <p className="text-xs text-white/60">Upcoming invoice</p>
                 <h2 className="mt-0.5 text-base font-semibold">Monthly Rent & Services Payment</h2>
               </div>
-              <PaymentBadge status={upcomingInvoice.status.toLowerCase()} />
+              <PaymentBadge status={activeInvoice.status.toLowerCase()} />
             </div>
             <CardContent className="pt-5">
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
@@ -153,7 +189,7 @@ export function TenantDashboard() {
                 <div>
                   <p className="text-xs text-muted">Due date</p>
                   <p className="mt-1 text-sm font-medium text-foreground">
-                    {new Date(upcomingInvoice.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    {displayDueDate ? displayDueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) : 'N/A'}
                   </p>
                 </div>
                 <div>
@@ -162,7 +198,7 @@ export function TenantDashboard() {
                 </div>
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
-                <Button size="lg" onClick={() => navigate(`/tenant/pay/${upcomingInvoice.id}`)}>
+                <Button size="lg" onClick={() => navigate(activeInvoice.id === 'virtual-payment' ? '/tenant/payments' : `/tenant/pay/${activeInvoice.id}`)}>
                   <CreditCardIcon className="h-4 w-4" /> Pay securely
                 </Button>
                 <Button variant="outline" size="lg" onClick={() => navigate('/tenant/payments')}>
@@ -187,8 +223,8 @@ export function TenantDashboard() {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {upcomingInvoice && (
-              <Button variant="outline" className="w-full justify-start" onClick={() => navigate(`/tenant/pay/${upcomingInvoice.id}`)}>
+            {activeInvoice && (
+              <Button variant="outline" className="w-full justify-start" onClick={() => navigate(activeInvoice.id === 'virtual-payment' ? '/tenant/payments' : `/tenant/pay/${activeInvoice.id}`)}>
                 <CreditCardIcon className="h-4 w-4 text-primary" /> Pay Now
               </Button>
             )}
