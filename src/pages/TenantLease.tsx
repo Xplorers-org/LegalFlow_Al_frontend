@@ -37,11 +37,21 @@ export function TenantLease() {
           api.getLeases().catch(() => []),
         ]);
 
-        const currentTenant = tenantsRes.find((t: any) => t.email === user?.email);
-        if (currentTenant) {
-          setTenant(currentTenant);
-          const currentLease = leasesRes.find((l: any) => l.tenant_id === currentTenant.id);
+        // Filter all tenant records matching the current user's email
+        const myTenants = tenantsRes.filter((t: any) => t.email.toLowerCase() === user?.email?.toLowerCase());
+        const myTenantIds = myTenants.map((t: any) => t.id);
+
+        // Find all leases for these matching tenants
+        const myLeases = leasesRes.filter((l: any) => myTenantIds.includes(l.tenant_id));
+
+        // Sort leases by created_at descending (latest first) to ensure the newest active lease is matched
+        myLeases.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        const currentLease = myLeases[0];
+        if (currentLease) {
           setLease(currentLease);
+          const currentTenant = myTenants.find((t: any) => t.id === currentLease.tenant_id);
+          setTenant(currentTenant);
         }
       } catch (err) {
         console.error('Error loading tenant lease:', err);

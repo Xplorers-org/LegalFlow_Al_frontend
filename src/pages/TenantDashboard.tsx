@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2Icon, CalendarClockIcon, AlertCircleIcon, CheckCircle2Icon, CreditCardIcon, FileTextIcon, DownloadIcon, ArrowRightIcon, BellRingIcon, RefreshCwIcon } from 'lucide-react';
+import { Building2Icon, CalendarClockIcon, AlertCircleIcon, CheckCircle2Icon, CreditCardIcon, FileTextIcon, DownloadIcon, ArrowRightIcon, BellRingIcon, RefreshCwIcon, ReceiptTextIcon, SparklesIcon, ShieldCheckIcon } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { StatCard } from '../components/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
@@ -29,16 +29,24 @@ export function TenantDashboard() {
         api.getLeases().catch(() => []),
       ]);
 
-      const currentTenant = tenantsRes.find((t: any) => t.email === user?.email);
-      if (currentTenant) {
-        setTenant(currentTenant);
-        const currentLease = leasesRes.find((l: any) => l.tenant_id === currentTenant.id);
-        setLease(currentLease);
+      // Filter all tenant records matching the current user's email
+      const myTenants = tenantsRes.filter((t: any) => t.email.toLowerCase() === user?.email?.toLowerCase());
+      const myTenantIds = myTenants.map((t: any) => t.id);
 
-        if (currentLease) {
-          const paymentsRes = await api.getPayments(currentLease.id).catch(() => []);
-          setPayments(paymentsRes);
-        }
+      // Find all leases for these matching tenants
+      const myLeases = leasesRes.filter((l: any) => myTenantIds.includes(l.tenant_id));
+
+      // Sort leases by created_at descending (latest first) to ensure the newest active lease is matched
+      myLeases.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      const currentLease = myLeases[0];
+      if (currentLease) {
+        setLease(currentLease);
+        const currentTenant = myTenants.find((t: any) => t.id === currentLease.tenant_id);
+        setTenant(currentTenant);
+
+        const paymentsRes = await api.getPayments(currentLease.id).catch(() => []);
+        setPayments(paymentsRes);
       }
     } catch (err) {
       console.error('Error loading tenant dashboard:', err);
@@ -258,6 +266,175 @@ export function TenantDashboard() {
           )}
         </div>
       </div>
+
+      {lease?.extracted_metadata && (
+        <div className="mt-8 space-y-6">
+          <div className="flex items-center gap-2 border-b border-border pb-3">
+            <SparklesIcon className="h-5 w-5 text-primary animate-pulse" />
+            <h2 className="text-lg font-bold text-foreground">Lease Agreement Schedules (AI-Extracted)</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {/* First Schedule - Premises */}
+            <Card className="md:col-span-2 lg:col-span-3 border-primary-soft">
+              <CardHeader className="border-b border-border bg-primary-soft/10 py-3.5">
+                <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                  <Building2Icon className="h-4 w-4" /> First Schedule: Description of Demised Premises
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 pt-5">
+                <div className="rounded-lg bg-background border border-border p-3">
+                  <p className="text-xs text-muted font-semibold uppercase">Physical Address</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">{lease.extracted_metadata.first_schedule?.physical_address || "N/A"}</p>
+                </div>
+                <div className="rounded-lg bg-background border border-border p-3">
+                  <p className="text-xs text-muted font-semibold uppercase">Assessment Number</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">{lease.extracted_metadata.first_schedule?.assessment_number || "N/A"}</p>
+                </div>
+                <div className="rounded-lg bg-background border border-border p-3">
+                  <p className="text-xs text-muted font-semibold uppercase">Local Authority</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">{lease.extracted_metadata.first_schedule?.local_authority || "N/A"}</p>
+                </div>
+                <div className="rounded-lg bg-background border border-border p-3 sm:col-span-2">
+                  <p className="text-xs text-muted font-semibold uppercase">Lot & Plan Reference</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">{lease.extracted_metadata.first_schedule?.lot_plan_reference || "N/A"}</p>
+                </div>
+                <div className="rounded-lg bg-background border border-border p-3">
+                  <p className="text-xs text-muted font-semibold uppercase">Extent / Size</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">{lease.extracted_metadata.first_schedule?.extent || "N/A"}</p>
+                </div>
+                <div className="rounded-lg bg-background border border-border p-3 sm:col-span-2 lg:col-span-3">
+                  <p className="text-xs text-muted font-semibold uppercase">Permitted Use</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">{lease.extracted_metadata.first_schedule?.permitted_use || "N/A"}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Second Schedule - Rent Breakdown */}
+            <Card className="lg:col-span-2 border-primary-soft">
+              <CardHeader className="border-b border-border bg-primary-soft/10 py-3.5">
+                <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                  <ReceiptTextIcon className="h-4 w-4" /> Second Schedule: Rent & Service Charge Breakdown
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-5 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted font-semibold">Base monthly Rent</p>
+                    <p className="mt-1 text-base font-mono font-bold text-foreground">
+                      {lease.extracted_metadata.second_schedule_breakdown?.base_rent ? formatCurrency(lease.extracted_metadata.second_schedule_breakdown.base_rent) : formatCurrency(parseFloat(lease.monthly_rent))}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted font-semibold">Security Charge</p>
+                    <p className="mt-1 text-base font-mono font-bold text-foreground">
+                      {lease.extracted_metadata.second_schedule_breakdown?.building_security ? formatCurrency(lease.extracted_metadata.second_schedule_breakdown.building_security) : "N/A"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted font-semibold">Common Area Cleaning</p>
+                    <p className="mt-1 text-base font-mono font-medium text-foreground">
+                      {lease.extracted_metadata.second_schedule_breakdown?.common_area_cleaning ? formatCurrency(lease.extracted_metadata.second_schedule_breakdown.common_area_cleaning) : "N/A"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted font-semibold">Common Area Lighting</p>
+                    <p className="mt-1 text-base font-mono font-medium text-foreground">
+                      {lease.extracted_metadata.second_schedule_breakdown?.common_area_lighting ? formatCurrency(lease.extracted_metadata.second_schedule_breakdown.common_area_lighting) : "N/A"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted font-semibold">Elevator Maintenance</p>
+                    <p className="mt-1 text-base font-mono font-medium text-foreground">
+                      {lease.extracted_metadata.second_schedule_breakdown?.elevator_lift_maintenance ? formatCurrency(lease.extracted_metadata.second_schedule_breakdown.elevator_lift_maintenance) : "N/A"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-primary-soft/20 p-3">
+                    <p className="text-xs text-primary font-bold">Total Service Charges</p>
+                    <p className="mt-1 text-base font-mono font-bold text-primary">
+                      {formatCurrency(parseFloat(lease.service_charge))}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted font-semibold">Due Date</p>
+                    <p className="mt-1 text-sm font-medium text-foreground">
+                      {lease.payment_day ? `${lease.payment_day}th day of each calendar month` : "N/A"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-muted font-semibold">Grace Period</p>
+                    <p className="mt-1 text-sm font-medium text-foreground">
+                      {lease.grace_period_days ? `${lease.grace_period_days} calendar days from the Due Date` : "N/A"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 col-span-2">
+                    <p className="text-xs text-muted font-semibold">Late Payment Interest</p>
+                    <p className="mt-1 text-sm font-medium text-foreground">
+                      {lease.interest_rate_pa ? `${lease.interest_rate_pa}% per annum, compounding monthly on the Outstanding Balance` : "N/A"}
+                    </p>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border bg-background/50 p-3">
+                  <p className="text-xs text-muted font-semibold uppercase">Annual Rent Escalation Terms</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">{lease.extracted_metadata.second_schedule_breakdown?.annual_escalation || "N/A"}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Third Schedule - Utilities */}
+            <Card className="border-primary-soft">
+              <CardHeader className="border-b border-border bg-primary-soft/10 py-3.5">
+                <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                  <SparklesIcon className="h-4 w-4" /> Third Schedule: Utility Account Bindings
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-5 space-y-4">
+                <div className="rounded-lg border border-border p-3.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-foreground">Electricity Provider</span>
+                    <span className="rounded bg-info/10 px-1.5 py-0.5 text-[10px] font-semibold text-info">
+                      {lease.extracted_metadata.third_schedule_utilities?.electricity_provider?.includes("LECO") ? "LECO" : "CEB"}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-sm font-semibold text-foreground">
+                    {lease.extracted_metadata.third_schedule_utilities?.electricity_provider || "Ceylon Electricity Board"}
+                  </p>
+                  <p className="text-xs text-muted mt-1 font-mono">
+                    Acct: {lease.extracted_metadata.third_schedule_utilities?.electricity_account_no || "N/A"}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-border p-3.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-foreground">Water Provider</span>
+                    <span className="rounded bg-info/10 px-1.5 py-0.5 text-[10px] font-semibold text-info">NWSDB</span>
+                  </div>
+                  <p className="mt-1.5 text-sm font-semibold text-foreground">
+                    {lease.extracted_metadata.third_schedule_utilities?.water_provider || "National Water Supply & Drainage Board"}
+                  </p>
+                  <p className="text-xs text-muted mt-1 font-mono">
+                    Acct: {lease.extracted_metadata.third_schedule_utilities?.water_account_no || "N/A"}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-border p-3.5 bg-background/50">
+                  <p className="text-xs text-muted font-semibold uppercase">Liability for Consumption</p>
+                  <p className="mt-1.5 text-xs font-medium text-foreground">
+                    {lease.extracted_metadata.third_schedule_utilities?.liability_for_consumption || "Lessee, exclusively, from the Commencement Date"}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border border-border p-3.5 bg-background/50">
+                  <p className="text-xs text-muted font-semibold uppercase">Recovery of Arrears on Termination</p>
+                  <p className="mt-1.5 text-xs font-medium text-foreground">
+                    {lease.extracted_metadata.third_schedule_utilities?.recovery_of_arrears_on_termination || "Firstly from the Security Deposit (Clause 8); balance recoverable by civil action (Clause 6.5)"}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
