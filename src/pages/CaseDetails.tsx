@@ -20,12 +20,13 @@ import {
   Building2Icon,
   ReceiptTextIcon,
   CheckCircle2Icon,
-  AlertCircleIcon
+  AlertCircleIcon,
+  RefreshCwIcon
 } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { PaymentBadge, CaseBadge } from '../components/ui/Badge';
+import { PaymentBadge, CaseBadge, LeaseBadge } from '../components/ui/Badge';
 import { Table, THead, TH, TBody, TR, TD } from '../components/ui/Table';
 import { formatCurrency, cn } from '../lib/utils';
 import { api } from '../lib/api';
@@ -147,7 +148,7 @@ export function CaseDetails() {
         actions={
           <div className="flex items-center gap-2">
             {caseRecord ? (
-              <CaseBadge status={caseRecord.status.toLowerCase()} />
+              <CaseBadge status={caseRecord.status ? caseRecord.status.toLowerCase() : 'open'} />
             ) : (
               <span className="rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success flex items-center gap-1.5">
                 <CheckCircle2Icon className="h-3.5 w-3.5" /> Good Standing
@@ -223,7 +224,7 @@ export function CaseDetails() {
                     <div className="rounded-lg border border-border bg-background/60 p-3">
                       <p className="text-xs text-muted">Current Status</p>
                       <p className="mt-1 text-sm font-semibold text-foreground capitalize">
-                        {caseRecord.status.replace('_', ' ')}
+                        {caseRecord.status ? caseRecord.status.replace('_', ' ') : 'Open'}
                       </p>
                     </div>
                     <div className="rounded-lg border border-border bg-background/60 p-3">
@@ -354,7 +355,7 @@ export function CaseDetails() {
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold">Lease State</span>
-                  <LeaseBadge status={lease ? lease.status.toLowerCase() : 'active'} />
+                  <LeaseBadge status={lease && lease.status ? lease.status.toLowerCase() : 'active'} />
                 </div>
                 <div className="text-xs text-muted leading-relaxed">
                   Tenant registered on LegalFlow AI Platform. Automatic invoice reminders and billing dispatches are scheduled according to lease terms.
@@ -521,13 +522,13 @@ export function CaseDetails() {
               <TBody>
                 {payments.map((inv) => (
                   <TR key={inv.id}>
-                    <TD className="pl-5 font-mono">INV-{inv.id.substring(0, 8).toUpperCase()}</TD>
-                    <TD className="font-mono font-medium">{formatCurrency(parseFloat(inv.amount_due))}</TD>
+                    <TD className="pl-5 font-mono">INV-{inv.id ? String(inv.id).substring(0, 8).toUpperCase() : 'N/A'}</TD>
+                    <TD className="font-mono font-medium">{formatCurrency(inv.amount_due ? parseFloat(inv.amount_due) : 0)}</TD>
                     <TD className="text-muted">
-                      {new Date(inv.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {inv.due_date ? new Date(inv.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
                     </TD>
                     <TD className="pr-5">
-                      <PaymentBadge status={inv.status.toLowerCase()} />
+                      <PaymentBadge status={inv.status ? inv.status.toLowerCase() : 'pending'} />
                     </TD>
                   </TR>
                 ))}
