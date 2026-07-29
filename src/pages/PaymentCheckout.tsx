@@ -68,6 +68,16 @@ export function PaymentCheckout() {
   // Find the target payment
   const targetPayment = payments.find((p) => p.id === id);
 
+  // Sequential lock: only the earliest unpaid invoice can be paid
+  const sortedUnpaid = [...payments]
+    .filter((p) => p.status?.toLowerCase() !== 'paid' && p.status?.toLowerCase() !== 'success' && p.status?.toLowerCase() !== 'completed')
+    .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+  const firstUnpaidPayment = sortedUnpaid[0];
+  const isBlocked = !!targetPayment && !!firstUnpaidPayment && targetPayment.id !== firstUnpaidPayment.id;
+  const blockingMonthLabel = firstUnpaidPayment
+    ? new Date(firstUnpaidPayment.due_date).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+    : '';
+
   // Synthesize or resolve invoice
   const invoice = targetPayment ? {
     id: targetPayment.id,
@@ -241,9 +251,21 @@ export function PaymentCheckout() {
                 <p className="text-xs text-muted">Reference Number</p>
                 <p className="mt-1 font-mono text-sm font-medium">{invoice.gatewayRef}</p>
               </div>
-              <Button size="lg" className="mt-6 w-full" onClick={handlePay}>
-                <ShieldCheckIcon className="h-4 w-4" /> Pay Securely
-              </Button>
+              {isBlocked ? (
+                <div className="mt-6 rounded-xl border border-warning/30 bg-warning/5 p-4 text-center">
+                  <p className="text-sm font-medium text-foreground">Payment Blocked</p>
+                  <p className="mt-1 text-xs text-muted">
+                    Please complete the <span className="font-semibold text-foreground">{blockingMonthLabel}</span> invoice first before paying this one.
+                  </p>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => navigate('/tenant/payments')}>
+                    Go to Payments
+                  </Button>
+                </div>
+              ) : (
+                <Button size="lg" className="mt-6 w-full" onClick={handlePay}>
+                  <ShieldCheckIcon className="h-4 w-4" /> Pay Securely
+                </Button>
+              )}
             </CardContent>
           </Card>
           <div className="flex items-start gap-3 rounded-xl border border-success/25 bg-success-soft p-4">

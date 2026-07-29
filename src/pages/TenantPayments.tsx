@@ -71,8 +71,12 @@ export function TenantPayments() {
 
   const nextPaymentDueDate = lease ? getNextDueDate(lease.payment_day) : null;
 
-  // Build the list of displayable invoices
-  const displayInvoices = payments.length > 0 ? payments.map((p, idx) => {
+  // Build the list of displayable invoices — sorted oldest due date first
+  const sortedPayments = [...payments].sort(
+    (a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
+  );
+
+  const displayInvoices = sortedPayments.length > 0 ? sortedPayments.map((p, idx) => {
     const totalAmount = parseFloat(p.amount_due);
     const serviceChargeVal = lease ? parseFloat(lease.service_charge || '0') : 0;
     const baseAmount = Math.max(0, totalAmount - serviceChargeVal);
@@ -187,49 +191,80 @@ export function TenantPayments() {
                 <TH className="pr-5 text-right">Actions</TH>
               </THead>
               <TBody>
-                {displayInvoices.map((invoice) => (
-                  <TR key={invoice.id}>
-                    <TD className="pl-5 font-mono font-medium">{invoice.number}</TD>
-                    <TD className="font-mono font-medium">
-                      {formatCurrency(invoice.amount + invoice.serviceCharge + (invoice.interest || 0))}
-                      {invoice.interest > 0 && (
-                        <span className="text-[10px] text-danger font-medium block mt-0.5">
-                          + {formatCurrency(invoice.interest)} Late Interest
-                        </span>
-                      )}
-                    </TD>
-                    <TD className="text-muted">
-                      {new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </TD>
-                    <TD>
-                      <PaymentBadge status={invoice.status} />
-                    </TD>
-                    <TD className="pr-5 text-right">
-                      <div className="flex justify-end gap-1">
-                        {invoice.status !== 'paid' && invoice.status !== 'success' && invoice.status !== 'completed' && (
-                          <Button
-                            size="sm"
-                            onClick={() => navigate(invoice.id === 'virtual-payment' ? '/tenant/payments' : `/tenant/pay/${invoice.id}`)}
-                          >
-                            <CreditCardIcon className="h-3.5 w-3.5" /> Pay Now
-                          </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => navigate(invoice.id === 'virtual-payment' ? '/tenant/payments' : `/tenant/pay/${invoice.id}`)}
-                        >
-                          <EyeIcon className="h-3.5 w-3.5" /> View
-                        </Button>
-                        {(invoice.status === 'paid' || invoice.status === 'success' || invoice.status === 'completed') && (
-                          <Button variant="ghost" size="icon" aria-label="Download receipt" onClick={() => toast.success('Receipt downloaded')}>
-                            <DownloadIcon className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TD>
-                  </TR>
-                ))}
+                {(() => {
+                  const firstUnpaidIdx = displayInvoices.findIndex(
+                    (inv) => inv.status !== 'paid' && inv.status !== 'success' && inv.status !== 'completed'
+                  );
+                  return displayInvoices.map((invoice, idx) => {
+                    const isPaid = invoice.status === 'paid' || invoice.status === 'success' || invoice.status === 'completed';
+                    const isPayable = !isPaid && idx === firstUnpaidIdx;
+                    const isLocked = !isPaid && idx !== firstUnpaidIdx;
+                    return (
+                      <TR key={invoice.id}>
+                        <TD className="pl-5 font-mono font-medium">{invoice.number}</TD>
+                        <TD className="font-mono font-medium">
+                          {formatCurrency(invoice.amount + invoice.serviceCharge + (invoice.interest || 0))}
+                          {invoice.interest > 0 && (
+                            <span className="text-[10px] text-danger font-medium block mt-0.5">
+                              + {formatCurrency(invoice.interest)} Late Interest
+                            </span>
+                          )}
+                        </TD>
+                        <TD className="text-muted">
+                          {new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </TD>
+                        <TD>
+                          <PaymentBadge status={invoice.status} />
+                        </TD>
+                        <TD className="pr-5 text-right">
+                          <div className="flex justify-end gap-1">
+                            {isPayable && (
+                              <Button
+                                size="sm"
+                                onClick={() => navigate(invoice.id === 'virtual-payment' ? '/tenant/payments' : `/tenant/pay/${invoice.id}`)}
+                              >
+                                <CreditCardIcon className="h-3.5 w-3.5" /> Pay Now
+                              </Button>
+                            )}
+                            {isLocked && (() => {
+                              // Find the invoice just before this one that is still unpaid
+                              const prevInvoice = displayInvoices[idx - 1];
+                              const prevLabel = prevInvoice
+                                ? new Date(prevInvoice.dueDate).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+                                : 'previous';
+                              return (
+                                <div className="relative group">
+                                  <Button
+                                    size="sm"
+                                    disabled
+                                    className="pointer-events-none select-none blur-[0.1px] opacity-40 grayscale cursor-not-allowed"
+                                  >
+                                    <CreditCardIcon className="h-3.5 w-3.5" /> Pay Now
+                                  </Button>
+                                  <div className="absolute bottom-full right-0 mb-2 hidden w-56 rounded-lg border border-border bg-surface px-3 py-2 text-xs text-muted shadow-lg group-hover:block z-10 pointer-events-none">
+                                    Complete the <span className="font-semibold text-foreground">{prevLabel}</span> payment first.
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate(invoice.id === 'virtual-payment' ? '/tenant/payments' : `/tenant/pay/${invoice.id}`)}
+                            >
+                              <EyeIcon className="h-3.5 w-3.5" /> View
+                            </Button>
+                            {isPaid && (
+                              <Button variant="ghost" size="icon" aria-label="Download receipt" onClick={() => toast.success('Receipt downloaded')}>
+                                <DownloadIcon className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TD>
+                      </TR>
+                    );
+                  });
+                })()}
               </TBody>
             </Table>
           ) : (
