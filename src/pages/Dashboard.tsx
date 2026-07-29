@@ -49,34 +49,54 @@ export function Dashboard() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const [tenantsRes, leasesRes, paymentsRes, casesRes, docsRes] = await Promise.all([
-          api.getTenants().catch(() => []),
-          api.getLeases().catch(() => []),
-          api.getPayments().catch(() => []),
-          api.getCases().catch(() => []),
-          api.getDocuments().catch(() => []),
-        ]);
-        setTenants(tenantsRes);
-        setLeases(leasesRes);
-        setPayments(paymentsRes);
-        setCases(casesRes);
-        setDocuments(docsRes);
-      } catch (err) {
-        console.error('Failed to load landlord dashboard data:', err);
-      } finally {
-        setLoading(false);
-      }
+  const loadData = async () => {
+    try {
+      const [tenantsRes, leasesRes, paymentsRes, casesRes, docsRes] = await Promise.all([
+        api.getTenants().catch(() => []),
+        api.getLeases().catch(() => []),
+        api.getPayments().catch(() => []),
+        api.getCases().catch(() => []),
+        api.getDocuments().catch(() => []),
+      ]);
+      setTenants(tenantsRes);
+      setLeases(leasesRes);
+      setPayments(paymentsRes);
+      setCases(casesRes);
+      setDocuments(docsRes);
+    } catch (err) {
+      console.error('Failed to load landlord dashboard data:', err);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     loadData();
+
+    // Auto-refresh when landlord returns to this tab — picks up tenant payments immediately
+    const onVisible = () => { if (document.visibilityState === 'visible') loadData(); };
+    const onFocus = () => loadData();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
+
+  // Also refresh when navigating here after a tenant payment (same-session navigation)
+  useEffect(() => {
+    const flag = localStorage.getItem('legalflow_payment_updated');
+    if (flag) {
+      localStorage.removeItem('legalflow_payment_updated');
+      loadData();
+    }
   }, []);
 
   const quickActions = [
     { label: 'New Tenant', icon: UserPlusIcon, action: () => navigate('/tenants?new=1') },
     { label: 'Create Lease', icon: FilePlus2Icon, action: () => navigate('/tenants?new=1') },
-    { label: 'Generate Payment Link', icon: LinkIcon, action: () => toast.success('Payment link generated & copied') },
+    { label: 'Payment Links', icon: LinkIcon, action: () => navigate('/payments') },
     { label: 'Generate Document', icon: SparklesIcon, action: () => navigate('/cases') }
   ];
 
@@ -102,7 +122,28 @@ export function Dashboard() {
       return sum + parseFloat(p.amount_due || '0') + interest;
     }, 0);
 
-  const activeCasesCount = cases.filter(c => c.status !== 'CLOSED' && c.status !== 'RESOLVED' && c.status !== 'closed' && c.status !== 'resolved').length;
+  // Count overdue payments (not compliance cases — those are separate)
+  const overduePaymentsCount = payments.filter(
+    p => p.status === 'OVERDUE' || p.status === 'overdue'
+  ).length;
+
+  const overduePaymentsAmount = payments
+    .filter(p => p.status === 'OVERDUE' || p.status === 'overdue')
+    .reduce((sum, p) => {
+      const lease = leases.find(l => l.id === p.lease_id);
+      const interestRate = lease ? parseFloat(lease.interest_rate_pa || '12') : 12;
+      const gracePeriod = lease ? parseInt(lease.grace_period_days || '5', 10) : 5;
+      const payDay = lease ? lease.payment_day : 5;
+      const { interest } = calculateLateInterest(parseFloat(p.amount_due || '0'), p.due_date, interestRate, gracePeriod, payDay);
+      return sum + parseFloat(p.amount_due || '0') + interest;
+    }, 0);
+
+  const pendingPaymentsAmount = payments
+    .filter(p => p.status === 'PENDING' || p.status === 'pending')
+    .reduce((sum, p) => sum + parseFloat(p.amount_due || '0'), 0);
+  const pendingPaymentsCount = payments.filter(p => p.status === 'PENDING' || p.status === 'pending').length;
+
+
 
   const recentCasesList = cases.slice(0, 5).map((c) => {
     const lease = leases.find((l) => l.id === c.lease_id);
@@ -267,10 +308,38 @@ export function Dashboard() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Active Leases" value={String(activeLeasesCount)} icon={BuildingIcon} tone="primary" hint="Monitored in real-time" index={0} />
-        <StatCard label="Payments Due" value={formatCurrency(totalPaymentsDue)} icon={ClockIcon} tone="info" hint="Outstanding and pending payments" index={1} />
-        <StatCard label="Overdue Cases" value={String(activeCasesCount)} icon={AlertTriangleIcon} tone="danger" hint="Requires compliance review" index={2} />
-        <StatCard label="Documents Generated" value={String(documents.length)} icon={FileTextIcon} tone="success" hint="AI-drafted templates & letters" index={3} />
+        <StatCard
+          label="Active Leases"
+          value={String(activeLeasesCount)}
+          icon={BuildingIcon}
+          tone="primary"
+          hint="Monitored in real-time"
+          index={0}
+        />
+        <StatCard
+          label="Payments Due"
+          value={formatCurrency(totalPaymentsDue)}
+          icon={ClockIcon}
+          tone="info"
+          hint={`${pendingPaymentsCount} pending · ${formatCurrency(pendingPaymentsAmount)}`}
+          index={1}
+        />
+        <StatCard
+          label="Overdue Payments"
+          value={String(overduePaymentsCount)}
+          icon={AlertTriangleIcon}
+          tone={overduePaymentsCount > 0 ? 'danger' : 'success'}
+          hint={overduePaymentsCount > 0 ? `${formatCurrency(overduePaymentsAmount)} outstanding` : 'All payments on time'}
+          index={2}
+        />
+        <StatCard
+          label="Documents Generated"
+          value={String(documents.length)}
+          icon={FileTextIcon}
+          tone="success"
+          hint="AI-drafted templates & letters"
+          index={3}
+        />
       </div>
 
       {/* Main grid */}

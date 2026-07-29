@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2Icon, ShieldCheckIcon, CreditCardIcon, Building2Icon, UserIcon, HashIcon, DownloadIcon, ArrowRightIcon, LoaderCircleIcon } from 'lucide-react';
@@ -6,7 +6,6 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { formatCurrency, calculateLateInterest } from '../lib/utils';
-import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
