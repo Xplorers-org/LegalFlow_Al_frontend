@@ -8,7 +8,6 @@ import { Button } from '../components/ui/Button';
 import { Table, THead, TH, TBody, TR, TD } from '../components/ui/Table';
 import { PaymentBadge } from '../components/ui/Badge';
 import { formatCurrency, calculateLateInterest, getAdjustedDueDate } from '../lib/utils';
-import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -102,6 +101,9 @@ export function TenantPayments() {
       dueDate: getAdjustedDueDate(p.due_date, lease?.payment_day || 5).toISOString(),
       status: p.status.toLowerCase(),
       gatewayRef: p.gateway_reference || `ref_${p.id.slice(0, 8)}`,
+      paidDate: p.paid_date
+        ? new Date(p.paid_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+        : new Date(p.updated_at || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     };
   }) : (lease ? [{
     id: 'virtual-payment',
@@ -118,6 +120,42 @@ export function TenantPayments() {
   const outstandingBalance = displayInvoices
     .filter(inv => inv.status === 'pending' || inv.status === 'overdue')
     .reduce((sum, inv) => sum + inv.amount + inv.serviceCharge + (inv.interest || 0), 0);
+
+  const downloadReceipt = (invoice: any) => {
+    const tenantName = payments
+      .flatMap(() => [])
+      .join('') || lease?.property_name; // fallback
+    const html = `
+      <!DOCTYPE html><html><head>
+      <title>LegalFlow Receipt — ${invoice.number}</title>
+      <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 40px; color: #111; }
+        h1 { font-size: 22px; margin-bottom: 4px; }
+        .label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+        .value { font-size: 14px; font-weight: 600; margin-top: 2px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin: 20px 0; }
+        .total { border-top: 2px solid #111; margin-top: 16px; padding-top: 12px; font-size: 18px; font-weight: 700; display:flex; justify-content:space-between; }
+        .badge { display:inline-block; background:#dcfce7; color:#15803d; border-radius:999px; padding:3px 12px; font-size:12px; font-weight:700; margin-bottom:12px; }
+        .logo { font-size:13px; color:#6b7280; margin-bottom:24px; }
+      </style></head><body>
+      <div class="logo">⚖️ LegalFlow AI — Official Payment Receipt</div>
+      <div class="badge">✓ PAYMENT CONFIRMED</div>
+      <h1>Payment Receipt</h1>
+      <p style="color:#555;font-size:13px">Invoice ${invoice.number} · ${invoice.paidDate}</p>
+      <div class="grid">
+        <div><div class="label">Property</div><div class="value">${lease?.property_name || 'Premises'}</div></div>
+        <div><div class="label">Invoice</div><div class="value">${invoice.number}</div></div>
+        <div><div class="label">Gateway Reference</div><div class="value">${invoice.gatewayRef}</div></div>
+        <div><div class="label">Paid Date</div><div class="value">${invoice.paidDate}</div></div>
+        <div><div class="label">Payment Gateway</div><div class="value">PayHere</div></div>
+        <div><div class="label">Status</div><div class="value" style="color:#15803d">✓ Paid</div></div>
+      </div>
+      <div class="total"><span>Amount Paid</span><span>${formatCurrency(invoice.amount + invoice.serviceCharge + (invoice.interest || 0))}</span></div>
+      </body></html>
+    `;
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); w.focus(); w.print(); }
+  };
 
   const nextDueInvoice = displayInvoices.find(inv => inv.status === 'pending' || inv.status === 'overdue');
   const pendingCount = displayInvoices.filter(inv => inv.status === 'pending' || inv.status === 'overdue').length;
@@ -255,10 +293,10 @@ export function TenantPayments() {
                               <EyeIcon className="h-3.5 w-3.5" /> View
                             </Button>
                             {isPaid && (
-                              <Button variant="ghost" size="icon" aria-label="Download receipt" onClick={() => toast.success('Receipt downloaded')}>
-                                <DownloadIcon className="h-4 w-4" />
-                              </Button>
-                            )}
+                               <Button variant="ghost" size="icon" aria-label="Download receipt" onClick={() => downloadReceipt(invoice)}>
+                                 <DownloadIcon className="h-4 w-4" />
+                               </Button>
+                             )}
                           </div>
                         </TD>
                       </TR>

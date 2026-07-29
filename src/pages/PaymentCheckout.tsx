@@ -132,6 +132,98 @@ export function PaymentCheckout() {
     );
   }
 
+  // If this invoice is already paid — show receipt view, not the payment form
+  const isAlreadyPaid = targetPayment &&
+    ['paid', 'success', 'completed'].includes(targetPayment.status?.toLowerCase());
+
+  if (isAlreadyPaid) {
+    const paidDateDisplay = targetPayment.paid_date
+      ? new Date(targetPayment.paid_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      : new Date(targetPayment.updated_at || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    const downloadPaidReceipt = () => {
+      const html = `
+        <!DOCTYPE html><html><head>
+        <title>LegalFlow Payment Receipt</title>
+        <style>
+          body { font-family: 'Segoe UI', sans-serif; margin: 40px; color: #111; }
+          h1 { font-size: 22px; margin-bottom: 4px; }
+          .label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+          .value { font-size: 14px; font-weight: 600; margin-top: 2px; }
+          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin: 20px 0; }
+          .total { border-top: 2px solid #111; margin-top: 16px; padding-top: 12px; font-size: 18px; font-weight: 700; display:flex; justify-content:space-between; }
+          .badge { display:inline-block; background:#dcfce7; color:#15803d; border-radius:999px; padding:3px 12px; font-size:12px; font-weight:700; margin-bottom:12px; }
+          .logo { font-size:13px; color:#6b7280; margin-bottom:24px; }
+        </style></head><body>
+        <div class="logo">⚖️ LegalFlow AI — Official Payment Receipt</div>
+        <div class="badge">✓ PAYMENT CONFIRMED</div>
+        <h1>Payment Receipt</h1>
+        <p style="color:#555;font-size:13px">Invoice ${invoice.number} · ${paidDateDisplay}</p>
+        <div class="grid">
+          <div><div class="label">Tenant</div><div class="value">${tenant?.name || 'Tenant'}</div></div>
+          <div><div class="label">Property</div><div class="value">${lease?.property_name || 'Premises'}</div></div>
+          <div><div class="label">Gateway Reference</div><div class="value">${targetPayment.gateway_reference || invoice.gatewayRef}</div></div>
+          <div><div class="label">Paid Date</div><div class="value">${paidDateDisplay}</div></div>
+          <div><div class="label">Payment Gateway</div><div class="value">PayHere</div></div>
+          <div><div class="label">Status</div><div class="value" style="color:#15803d">✓ Paid</div></div>
+        </div>
+        <div class="total"><span>Amount Paid</span><span>${formatCurrency(total)}</span></div>
+        </body></html>
+      `;
+      const w = window.open('', '_blank');
+      if (w) { w.document.write(html); w.document.close(); w.focus(); w.print(); }
+    };
+
+    return (
+      <div className="mx-auto max-w-2xl">
+        <PageHeader
+          title="Payment Receipt"
+          breadcrumbs={[{ label: 'Payments', to: '/tenant/payments' }, { label: invoice.number }]}
+        />
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-success/30 bg-surface p-8 text-center shadow-elevated sm:p-12"
+        >
+          <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-success-soft text-success">
+            <CheckCircle2Icon className="h-9 w-9" />
+          </span>
+          <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-success">Invoice Paid</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{formatCurrency(total)}</h1>
+          <p className="mx-auto mt-2 text-sm text-muted">{invoice.number} · {tenant?.name || 'Tenant'}</p>
+
+          <div className="mx-auto mt-8 grid max-w-md grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border text-left">
+            <div className="bg-surface p-4">
+              <p className="text-xs text-muted">Gateway Reference</p>
+              <p className="mt-1 font-mono text-sm font-medium">{targetPayment.gateway_reference || invoice.gatewayRef}</p>
+            </div>
+            <div className="bg-surface p-4">
+              <p className="text-xs text-muted">Paid Date</p>
+              <p className="mt-1 text-sm font-medium">{paidDateDisplay}</p>
+            </div>
+            <div className="bg-surface p-4">
+              <p className="text-xs text-muted">Property</p>
+              <p className="mt-1 text-sm font-medium">{lease?.property_name || 'Premises'}</p>
+            </div>
+            <div className="bg-surface p-4">
+              <p className="text-xs text-muted">Gateway</p>
+              <p className="mt-1 text-sm font-medium">PayHere</p>
+            </div>
+          </div>
+
+          <div className="mx-auto mt-8 flex max-w-md flex-col gap-2 sm:flex-row">
+            <Button variant="outline" className="flex-1" onClick={downloadPaidReceipt}>
+              <DownloadIcon className="h-4 w-4" /> Download Receipt
+            </Button>
+            <Button className="flex-1" onClick={() => navigate('/tenant/payments')}>
+              <ArrowRightIcon className="h-4 w-4" /> Back to Payments
+            </Button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   const handlePay = async () => {
     setProcessing(true);
     try {
