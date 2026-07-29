@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import {
   SearchIcon,
   LinkIcon,
   CopyIcon,
   SendIcon,
-  HistoryIcon,
   MoreHorizontalIcon,
   BanknoteIcon,
   TimerIcon,
@@ -44,10 +43,8 @@ function GatewayBadge({ status }: { status: string }) {
 function RowMenu({ invoice, onAction }: { invoice: any; onAction: (label: string, invoice: any) => void }) {
   const [open, setOpen] = useState(false);
   const items = [
-    { label: 'Generate Payment Link', icon: LinkIcon },
     { label: 'Copy Payment Link', icon: CopyIcon },
     { label: 'Resend Payment Link', icon: SendIcon },
-    { label: 'View Payment History', icon: HistoryIcon },
     { label: 'View Transaction', icon: ExternalLinkIcon }
   ];
   return (
@@ -107,6 +104,16 @@ export function Payments() {
 
   useEffect(() => {
     loadData();
+
+    // Refresh whenever landlord returns to this tab so new tenant payments appear immediately
+    const onVisible = () => { if (document.visibilityState === 'visible') loadData(); };
+    const onFocus = () => loadData();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+    };
   }, []);
 
   const handle = (label: string, invoice: any) => {
@@ -114,16 +121,13 @@ export function Payments() {
       setSelected(invoice);
       return;
     }
-    
     const paymentUrl = `${window.location.origin}/tenant/pay/${invoice.id}`;
-    
     if (label.includes('Copy') || label.includes('Generate')) {
       navigator.clipboard.writeText(paymentUrl);
-      toast.success(label.includes('Copy') ? 'Payment link copied to clipboard' : 'Payment link generated');
+      toast.success(`Payment link copied — send to tenant`);
     } else if (label.includes('Resend')) {
-      toast.success(`Payment link resent via Email to ${invoice.tenant}`);
-    } else {
-      toast(`Opening payment history for ${invoice.number}…`);
+      navigator.clipboard.writeText(paymentUrl);
+      toast.success(`Link copied — share with ${invoice.tenant} via WhatsApp or Email`);
     }
   };
 
