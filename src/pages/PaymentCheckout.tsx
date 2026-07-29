@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { CheckCircle2Icon, ShieldCheckIcon, CreditCardIcon, Building2Icon, UserIcon, HashIcon, DownloadIcon, ArrowRightIcon } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { CheckCircle2Icon, ShieldCheckIcon, CreditCardIcon, Building2Icon, UserIcon, HashIcon, DownloadIcon, ArrowRightIcon, LoaderCircleIcon } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -24,10 +24,12 @@ export function PaymentCheckout() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
   const [tenant, setTenant] = useState<any | null>(null);
   const [lease, setLease] = useState<any | null>(null);
   const [payments, setPayments] = useState<any[]>([]);
   const [success, setSuccess] = useState(false);
+  const receiptRef = useRef<{ txId: string; rctNum: string; paidDate: string } | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -130,11 +132,75 @@ export function PaymentCheckout() {
     );
   }
 
-  const handlePay = () => {
-    setSuccess(true);
+  const handlePay = async () => {
+    setProcessing(true);
+    try {
+      // Call backend webhook to mark this payment as PAID
+      if (targetPayment && targetPayment.id !== 'virtual-payment') {
+        await fetch(`${(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1')}/payment/webhook`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            payment_id: targetPayment.id,
+            gateway_reference: targetPayment.gateway_reference || `PH-MOCK-${targetPayment.id.slice(0, 8)}`,
+            status: 'PAID',
+            amount: total,
+          }),
+        }).catch(() => {}); // best-effort — success shown regardless for mock
+      }
+      // Generate stable receipt details
+      receiptRef.current = {
+        txId: `PH-${Math.floor(10000000 + Math.random() * 90000000)}`,
+        rctNum: `RCT-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        paidDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      };
+      // Simulate gateway processing delay
+      await new Promise((r) => setTimeout(r, 2200));
+      // Signal dashboard to refresh on next visit
+      localStorage.setItem('legalflow_payment_updated', Date.now().toString());
+    } finally {
+      setProcessing(false);
+      setSuccess(true);
+    }
+  };
+
+  const downloadReceipt = () => {
+    const rec = receiptRef.current;
+    if (!rec || !invoice) return;
+    const html = `
+      <!DOCTYPE html><html><head>
+      <title>LegalFlow Payment Receipt</title>
+      <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 40px; color: #111; }
+        h1 { font-size: 22px; margin-bottom: 4px; }
+        .label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+        .value { font-size: 14px; font-weight: 600; margin-top: 2px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin: 20px 0; }
+        .total { border-top: 2px solid #111; margin-top: 16px; padding-top: 12px; font-size: 18px; font-weight: 700; display:flex; justify-content:space-between; }
+        .badge { display:inline-block; background:#dcfce7; color:#15803d; border-radius:999px; padding:3px 12px; font-size:12px; font-weight:700; margin-bottom:12px; }
+        .logo { font-size:13px; color:#6b7280; margin-bottom:24px; }
+      </style></head><body>
+      <div class="logo">⚖️ LegalFlow AI — Official Payment Receipt</div>
+      <div class="badge">✓ PAYMENT CONFIRMED</div>
+      <h1>Payment Receipt</h1>
+      <p style="color:#555;font-size:13px">Invoice ${invoice.number} · ${rec.paidDate}</p>
+      <div class="grid">
+        <div><div class="label">Tenant</div><div class="value">${tenant?.name || 'Tenant'}</div></div>
+        <div><div class="label">Property</div><div class="value">${lease?.property_name || 'Premises'}</div></div>
+        <div><div class="label">Transaction ID</div><div class="value">${rec.txId}</div></div>
+        <div><div class="label">Receipt Number</div><div class="value">${rec.rctNum}</div></div>
+        <div><div class="label">Paid Date</div><div class="value">${rec.paidDate}</div></div>
+        <div><div class="label">Payment Gateway</div><div class="value">PayHere</div></div>
+      </div>
+      <div class="total"><span>Total Paid</span><span>${formatCurrency(total)}</span></div>
+      </body></html>
+    `;
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); w.focus(); w.print(); }
   };
 
   if (success) {
+    const rec = receiptRef.current;
     return (
       <div className="mx-auto max-w-2xl">
         <PageHeader title="Payment complete" />
@@ -154,17 +220,15 @@ export function PaymentCheckout() {
           <div className="mx-auto mt-8 grid max-w-md grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border text-left">
             <div className="bg-surface p-4">
               <p className="text-xs text-muted">Transaction ID</p>
-              <p className="mt-1 font-mono text-sm font-medium">PH-{Math.floor(10000000 + Math.random() * 90000000)}</p>
+              <p className="mt-1 font-mono text-sm font-medium">{rec?.txId}</p>
             </div>
             <div className="bg-surface p-4">
               <p className="text-xs text-muted">Receipt Number</p>
-              <p className="mt-1 font-mono text-sm font-medium">RCT-2026-{Math.floor(1000 + Math.random() * 9000)}</p>
+              <p className="mt-1 font-mono text-sm font-medium">{rec?.rctNum}</p>
             </div>
             <div className="bg-surface p-4">
               <p className="text-xs text-muted">Paid Date</p>
-              <p className="mt-1 text-sm font-medium">
-                {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-              </p>
+              <p className="mt-1 text-sm font-medium">{rec?.paidDate}</p>
             </div>
             <div className="bg-surface p-4">
               <p className="text-xs text-muted">Gateway</p>
@@ -172,7 +236,7 @@ export function PaymentCheckout() {
             </div>
           </div>
           <div className="mx-auto mt-8 flex max-w-md flex-col gap-2 sm:flex-row">
-            <Button variant="outline" className="flex-1" onClick={() => toast.success('Receipt downloaded')}>
+            <Button variant="outline" className="flex-1" onClick={downloadReceipt}>
               <DownloadIcon className="h-4 w-4" /> Download Receipt
             </Button>
             <Button className="flex-1" onClick={() => navigate('/tenant/dashboard')}>
@@ -185,7 +249,33 @@ export function PaymentCheckout() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="relative mx-auto max-w-4xl">
+      {/* Processing overlay */}
+      <AnimatePresence>
+        {processing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex flex-col items-center gap-5 rounded-2xl border border-border bg-surface p-10 shadow-2xl"
+            >
+              <LoaderCircleIcon className="h-12 w-12 animate-spin text-primary" />
+              <div className="text-center">
+                <p className="text-base font-semibold text-foreground">Processing Payment</p>
+                <p className="mt-1 text-sm text-muted">Connecting to PayHere secure gateway...</p>
+              </div>
+              <div className="flex items-center gap-2 rounded-full border border-border bg-background px-4 py-1.5 text-xs text-muted">
+                <ShieldCheckIcon className="h-3.5 w-3.5 text-success" /> 256-bit SSL encrypted
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <PageHeader
         title="Secure Payment"
         breadcrumbs={[{ label: 'Payments', to: '/tenant/payments' }, { label: invoice.number }]}

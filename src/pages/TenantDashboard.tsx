@@ -64,6 +64,15 @@ export function TenantDashboard() {
     }
   }, [user]);
 
+  // Refresh when navigating back after a completed payment
+  useEffect(() => {
+    const flag = localStorage.getItem('legalflow_payment_updated');
+    if (flag) {
+      localStorage.removeItem('legalflow_payment_updated');
+      loadDashboardData();
+    }
+  }, []);
+
   // Derived stats
   const nextPaymentAmount = lease ? (parseFloat(lease.monthly_rent || '0') + parseFloat(lease.service_charge || '0')) : 0;
   
