@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   SparklesIcon,
-  ShieldCheckIcon,
   BuildingIcon,
   UserIcon,
   MailIcon,
@@ -14,9 +13,6 @@ import {
   GavelIcon,
   FileTextIcon,
   AlertTriangleIcon,
-  TrendingUpIcon,
-  BookOpenIcon,
-  ArrowRightIcon,
   Building2Icon,
   ReceiptTextIcon,
   CheckCircle2Icon,
@@ -56,6 +52,8 @@ export function CaseDetails() {
   const [payments, setPayments] = useState<any[]>([]);
   const [utilityBills, setUtilityBills] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'schedules' | 'payments'>('overview');
+  const [documentsList, setDocumentsList] = useState<any[]>([]);
+  const [generating, setGenerating] = useState(false);
 
   const fetchDetails = async () => {
     if (!id) return;
@@ -78,6 +76,13 @@ export function CaseDetails() {
         setUtilityBills(utilitiesRes);
         const tenantCase = casesRes.find((c: any) => c.lease_id === tenantLease.id);
         setCaseRecord(tenantCase);
+
+        if (tenantCase) {
+          const docsRes = await api.getDocuments(tenantCase.id).catch(() => []);
+          setDocumentsList(docsRes);
+        } else {
+          setDocumentsList([]);
+        }
       }
     } catch (err) {
       console.error('Failed to load tenant details:', err);
@@ -111,6 +116,25 @@ export function CaseDetails() {
       });
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleGenerate = async (docType: 'REMINDER' | 'NOTICE_TO_QUIT' | 'LETTER_OF_DEMAND') => {
+    if (!caseRecord?.id) {
+      toast.error('No compliance case exists to generate documents.');
+      return;
+    }
+    try {
+      setGenerating(true);
+      toast.info(`Drafting ${docType.replace(/_/g, ' ')} with AI Agents...`);
+      const res = await api.generateDocument(caseRecord.id, docType);
+      toast.success(`${docType.replace(/_/g, ' ')} generated successfully as DRAFT.`);
+      navigate(`/documents/${res.id}`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Failed to generate document', { description: err.message || 'Check connection to service.' });
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -279,7 +303,7 @@ export function CaseDetails() {
                     <Button
                       variant="outline"
                       className="w-full flex items-center justify-center gap-2"
-                      disabled={analyzing}
+                      disabled={analyzing || generating}
                       onClick={handleRunAIAnalysis}
                     >
                       <RefreshCwIcon className={cn('h-4 w-4', analyzing && 'animate-spin')} />
@@ -288,17 +312,59 @@ export function CaseDetails() {
                     <Button
                       variant="outline"
                       onClick={() => navigate(`/documents`)}
+                      disabled={analyzing || generating}
                     >
                       <FileTextIcon className="h-4 w-4 text-primary" />
                       View AI Drafts
                     </Button>
                     <Button
                       onClick={() => navigate(`/documents`)}
+                      disabled={analyzing || generating}
                     >
                       <GavelIcon className="h-4 w-4" />
                       Issue Notice
                     </Button>
                   </div>
+
+                  {/* Execute Legal Action Templates */}
+                  <div className="mt-5 border-t border-border pt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Execute Legal Action Templates</p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <Button disabled={analyzing || generating} variant="outline" size="lg" className="h-auto flex-col items-start gap-1 py-3" onClick={() => handleGenerate('REMINDER')}>
+                        <FileTextIcon className="h-4 w-4 text-primary animate-pulse" />
+                        <span className="font-semibold text-xs">Generate Reminder</span>
+                      </Button>
+                      <Button disabled={analyzing || generating} variant="outline" size="lg" className="h-auto flex-col items-start gap-1 py-3" onClick={() => handleGenerate('NOTICE_TO_QUIT')}>
+                        <GavelIcon className="h-4 w-4 text-danger animate-pulse" />
+                        <span className="font-semibold text-xs">Generate Notice to Quit</span>
+                      </Button>
+                      <Button disabled={analyzing || generating} size="lg" className="h-auto flex-col items-start gap-1 py-3 bg-primary text-primary-foreground" onClick={() => handleGenerate('LETTER_OF_DEMAND')}>
+                        <ScrollTextIcon className="h-4 w-4 text-white animate-pulse" />
+                        <span className="font-semibold text-xs text-white">Generate Demand Letter</span>
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Generated Drafts List */}
+                  {documentsList.length > 0 && (
+                    <div className="mt-4 border-t border-border pt-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Generated Drafts for this Case</p>
+                      <div className="flex flex-wrap gap-2">
+                        {documentsList.map((d) => (
+                          <Button
+                            key={d.id}
+                            variant="ghost"
+                            size="sm"
+                            className="bg-muted hover:bg-muted/80 text-xs px-3 py-1.5"
+                            onClick={() => navigate(`/documents/${d.id}`)}
+                          >
+                            <FileTextIcon className="h-3 w-3 mr-1 text-primary" />
+                            {d.document_type.replace(/_/g, ' ')} (Draft)
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             ) : (
