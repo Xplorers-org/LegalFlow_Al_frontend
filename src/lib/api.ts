@@ -130,4 +130,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(approvalData),
     }),
+
+  generateDocument: (caseId: string, documentType: 'REMINDER' | 'NOTICE_TO_QUIT' | 'LETTER_OF_DEMAND') =>
+    fetchAPI(`/cases/${caseId}/generate?document_type=${documentType}`, {
+      method: 'POST',
+    }),
+
+  detectCases: () =>
+    fetchAPI('/cases/detect', {
+      method: 'POST',
+    }),
 };
