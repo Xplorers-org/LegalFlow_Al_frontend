@@ -27,12 +27,12 @@ export function NewTenantDialog({
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [monthlyRent, setMonthlyRent] = useState('185000');
-  const [serviceCharge, setServiceCharge] = useState('22000');
-  const [paymentDay, setPaymentDay] = useState('5');
-  const [leaseStart, setLeaseStart] = useState('2026-08-01');
-  const [leaseEnd, setLeaseEnd] = useState('2027-07-31');
-  const [interestRate, setInterestRate] = useState('12.0');
+  const [monthlyRent, setMonthlyRent] = useState('');
+  const [serviceCharge, setServiceCharge] = useState('');
+  const [paymentDay, setPaymentDay] = useState('');
+  const [leaseStart, setLeaseStart] = useState('');
+  const [leaseEnd, setLeaseEnd] = useState('');
+  const [interestRate, setInterestRate] = useState('');
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
