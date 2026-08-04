@@ -13,13 +13,12 @@ import {
   GavelIcon,
   FileTextIcon,
   AlertTriangleIcon,
-  Building2Icon,
-  ReceiptTextIcon,
   CheckCircle2Icon,
   AlertCircleIcon,
   RefreshCwIcon
 } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
+import { PremisesScheduleCard, RentScheduleCard, UtilitiesScheduleCard, UtilityStatementsTable } from '../components/SchedulesTab';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { PaymentBadge, CaseBadge, LeaseBadge } from '../components/ui/Badge';
@@ -453,209 +452,20 @@ export function CaseDetails() {
         <div className="space-y-6">
           {meta ? (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {/* First Schedule - Premises */}
-              <Card className="md:col-span-2 lg:col-span-3 border-primary-soft">
-                <CardHeader className="border-b border-border bg-primary-soft/10 py-3.5">
-                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                    <Building2Icon className="h-4 w-4" /> First Schedule: Description of Demised Premises
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 pt-5">
-                  <div className="rounded-lg bg-background border border-border p-3">
-                    <p className="text-xs text-muted font-semibold uppercase">Physical Address</p>
-                    <p className="mt-1 text-sm font-medium text-foreground">{meta.first_schedule?.physical_address || "N/A"}</p>
-                  </div>
-                  <div className="rounded-lg bg-background border border-border p-3">
-                    <p className="text-xs text-muted font-semibold uppercase">Assessment Number</p>
-                    <p className="mt-1 text-sm font-medium text-foreground">{meta.first_schedule?.assessment_number || "N/A"}</p>
-                  </div>
-                  <div className="rounded-lg bg-background border border-border p-3">
-                    <p className="text-xs text-muted font-semibold uppercase">Local Authority</p>
-                    <p className="mt-1 text-sm font-medium text-foreground">{meta.first_schedule?.local_authority || "N/A"}</p>
-                  </div>
-                  <div className="rounded-lg bg-background border border-border p-3 sm:col-span-2">
-                    <p className="text-xs text-muted font-semibold uppercase">Lot & Plan Reference</p>
-                    <p className="mt-1 text-sm font-medium text-foreground">{meta.first_schedule?.lot_plan_reference || "N/A"}</p>
-                  </div>
-                  <div className="rounded-lg bg-background border border-border p-3">
-                    <p className="text-xs text-muted font-semibold uppercase">Extent / Size</p>
-                    <p className="mt-1 text-sm font-medium text-foreground">{meta.first_schedule?.extent || "N/A"}</p>
-                  </div>
-                  <div className="rounded-lg bg-background border border-border p-3 sm:col-span-2 lg:col-span-3">
-                    <p className="text-xs text-muted font-semibold uppercase">Permitted Use</p>
-                    <p className="mt-1 text-sm font-medium text-foreground">{meta.first_schedule?.permitted_use || "N/A"}</p>
-                  </div>
-                </CardContent>
-              </Card>
+              <PremisesScheduleCard firstSchedule={meta.first_schedule} />
+              
+              <RentScheduleCard 
+                secondSchedule={meta.second_schedule_breakdown}
+                monthlyRent={parseFloat(lease.monthly_rent)}
+                serviceCharge={parseFloat(lease.service_charge)}
+                paymentDay={lease.payment_day}
+                gracePeriodDays={lease.grace_period_days}
+                interestRatePa={lease.interest_rate_pa}
+              />
 
-              {/* Second Schedule - Rent Breakdown */}
-              <Card className="lg:col-span-2 border-primary-soft">
-                <CardHeader className="border-b border-border bg-primary-soft/10 py-3.5">
-                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                    <ReceiptTextIcon className="h-4 w-4" /> Second Schedule: Rent & Service Charge Breakdown
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-5 space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="rounded-lg border border-border p-3">
-                      <p className="text-xs text-muted font-semibold">Base monthly Rent</p>
-                      <p className="mt-1 text-base font-mono font-bold text-foreground">
-                        {meta.second_schedule_breakdown?.base_rent ? formatCurrency(meta.second_schedule_breakdown.base_rent) : formatCurrency(parseFloat(lease.monthly_rent))}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border p-3">
-                      <p className="text-xs text-muted font-semibold">Security Charge</p>
-                      <p className="mt-1 text-base font-mono font-bold text-foreground">
-                        {meta.second_schedule_breakdown?.building_security ? formatCurrency(meta.second_schedule_breakdown.building_security) : "N/A"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border p-3">
-                      <p className="text-xs text-muted font-semibold">Common Area Cleaning</p>
-                      <p className="mt-1 text-base font-mono font-medium text-foreground">
-                        {meta.second_schedule_breakdown?.common_area_cleaning ? formatCurrency(meta.second_schedule_breakdown.common_area_cleaning) : "N/A"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border p-3">
-                      <p className="text-xs text-muted font-semibold">Common Area Lighting</p>
-                      <p className="mt-1 text-base font-mono font-medium text-foreground">
-                        {meta.second_schedule_breakdown?.common_area_lighting ? formatCurrency(meta.second_schedule_breakdown.common_area_lighting) : "N/A"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border p-3">
-                      <p className="text-xs text-muted font-semibold">Elevator Maintenance</p>
-                      <p className="mt-1 text-base font-mono font-medium text-foreground">
-                        {meta.second_schedule_breakdown?.elevator_lift_maintenance ? formatCurrency(meta.second_schedule_breakdown.elevator_lift_maintenance) : "N/A"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border bg-primary-soft/20 p-3">
-                      <p className="text-xs text-primary font-bold">Total Service Charges</p>
-                      <p className="mt-1 text-base font-mono font-bold text-primary">
-                        {formatCurrency(parseFloat(lease.service_charge))}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border p-3">
-                      <p className="text-xs text-muted font-semibold">Due Date</p>
-                      <p className="mt-1 text-sm font-medium text-foreground">
-                        {lease.payment_day ? `${lease.payment_day}th day of each calendar month` : "N/A"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border p-3">
-                      <p className="text-xs text-muted font-semibold">Grace Period</p>
-                      <p className="mt-1 text-sm font-medium text-foreground">
-                        {lease.grace_period_days ? `${lease.grace_period_days} calendar days from the Due Date` : "N/A"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border p-3 col-span-2">
-                      <p className="text-xs text-muted font-semibold">Late Payment Interest</p>
-                      <p className="mt-1 text-sm font-medium text-foreground">
-                        {lease.interest_rate_pa ? `${lease.interest_rate_pa}% per annum, compounding monthly on the Outstanding Balance` : "N/A"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-border bg-background/50 p-3">
-                    <p className="text-xs text-muted font-semibold uppercase">Annual Rent Escalation Terms</p>
-                    <p className="mt-1 text-sm font-medium text-foreground">{meta.second_schedule_breakdown?.annual_escalation || "N/A"}</p>
-                  </div>
-                </CardContent>
-              </Card>
- 
-              {/* Third Schedule - Utilities */}
-              <Card className="border-primary-soft">
-                <CardHeader className="border-b border-border bg-primary-soft/10 py-3.5">
-                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                    <SparklesIcon className="h-4 w-4" /> Third Schedule: Utility Account Bindings
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-5 space-y-4">
-                  <div className="rounded-lg border border-border p-3.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-foreground">Electricity Provider</span>
-                      <span className="rounded bg-info/10 px-1.5 py-0.5 text-[10px] font-semibold text-info">CEB</span>
-                    </div>
-                    <p className="mt-1.5 text-sm font-semibold text-foreground">
-                      {meta.third_schedule_utilities?.electricity_provider || "Ceylon Electricity Board"}
-                    </p>
-                    <p className="text-xs text-muted mt-1 font-mono">
-                      Acct: {meta.third_schedule_utilities?.electricity_account_no || "N/A"}
-                    </p>
-                  </div>
- 
-                  <div className="rounded-lg border border-border p-3.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-foreground">Water Provider</span>
-                      <span className="rounded bg-info/10 px-1.5 py-0.5 text-[10px] font-semibold text-info">NWSDB</span>
-                    </div>
-                    <p className="mt-1.5 text-sm font-semibold text-foreground">
-                      {meta.third_schedule_utilities?.water_provider || "National Water Supply & Drainage Board"}
-                    </p>
-                    <p className="text-xs text-muted mt-1 font-mono">
-                      Acct: {meta.third_schedule_utilities?.water_account_no || "N/A"}
-                    </p>
-                  </div>
+              <UtilitiesScheduleCard thirdSchedule={meta.third_schedule_utilities} />
 
-                  <div className="rounded-lg border border-border p-3.5 bg-background/50">
-                    <p className="text-xs text-muted font-semibold uppercase">Liability for Consumption</p>
-                    <p className="mt-1.5 text-xs font-medium text-foreground">
-                      {meta.third_schedule_utilities?.liability_for_consumption || "Lessee, exclusively, from the Commencement Date"}
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg border border-border p-3.5 bg-background/50">
-                    <p className="text-xs text-muted font-semibold uppercase">Recovery of Arrears on Termination</p>
-                    <p className="mt-1.5 text-xs font-medium text-foreground">
-                      {meta.third_schedule_utilities?.recovery_of_arrears_on_termination || "Firstly from the Security Deposit (Clause 8); balance recoverable by civil action (Clause 6.5)"}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Utility Statements Table */}
-              <Card className="lg:col-span-2 border-primary-soft">
-                <CardHeader className="border-b border-border bg-primary-soft/10 py-3.5">
-                  <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-                    <ReceiptTextIcon className="h-4 w-4" /> Third Schedule: Utility Statements & Payments
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-5 px-0 pb-0">
-                  {utilityBills.length === 0 ? (
-                    <div className="p-6 text-center text-sm text-muted">
-                      No utility bill statements parsed yet. Bills will appear here automatically when received by n8n.
-                    </div>
-                  ) : (
-                    <Table>
-                      <THead>
-                        <TH className="pl-4">Provider</TH>
-                        <TH>Account No</TH>
-                        <TH>Amount</TH>
-                        <TH>Due Date</TH>
-                        <TH className="pr-4 text-right">Status</TH>
-                      </THead>
-                      <TBody>
-                        {utilityBills.map((bill) => (
-                          <TR key={bill.id}>
-                            <TD className="pl-4 font-semibold">
-                              {bill.utility_type === 'ELECTRICITY' ? 'Electricity' : 'Water'}
-                            </TD>
-                            <TD className="font-mono text-xs text-muted">{bill.account_number}</TD>
-                            <TD className="font-mono font-medium text-foreground">{formatCurrency(bill.amount)}</TD>
-                            <TD className="text-muted">
-                              {new Date(bill.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                            </TD>
-                            <TD className="pr-4 text-right">
-                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                                bill.status === 'PAID' ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'
-                              }`}>
-                                <span className={`h-1 w-1 rounded-full ${bill.status === 'PAID' ? 'bg-success' : 'bg-warning'}`} />
-                                {bill.status === 'PAID' ? 'Paid' : 'Pending'}
-                              </span>
-                            </TD>
-                          </TR>
-                        ))}
-                      </TBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
+              <UtilityStatementsTable utilityBills={utilityBills} />
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-border p-12 text-center">
